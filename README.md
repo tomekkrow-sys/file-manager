@@ -29,6 +29,19 @@ wszystkich źródeł), obsługa archiwów na bibliotece standardowej (jak
 | Miniaturki obrazów w liście plików | ✅ | `ui/file_list.py` |
 | Transfery między dowolnymi źródłami (np. chmura → FTP) | ✅ | streaming przez `copy_stream` |
 
+## Kopiowanie między źródłami (np. chmura ⇄ dysk)
+
+Schowek działa **między wszystkimi źródłami** — transfer idzie przez streaming
+(Twój komputer pobiera z jednego źródła i wysyła do drugiego):
+
+1. W źródle A (np. ☁ Google Drive): zaznacz pliki → **Ctrl+C** (Kopiuj).
+2. Przełącz się w panelu bocznym na źródło B (np. 🖥 Pamięć lokalna)
+   i wejdź do katalogu docelowego.
+3. **Ctrl+V** (Wklej) — pojawi się pasek postępu.
+
+**Ctrl+X** (Wytnij) + **Ctrl+V** = przeniesienie (po skopiowaniu usuwa ze źródła).
+Działa dla każdej pary: lokalne ⇄ FTP ⇄ SSH ⇄ NAS ⇄ chmury.
+
 ## Instalacja i uruchomienie
 
 ```bash
