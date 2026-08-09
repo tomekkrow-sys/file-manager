@@ -44,7 +44,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='resources/icons/file_manager.png',
+    icon='resources/icons/file_manager.ico',
 )
 coll = COLLECT(
     exe,
