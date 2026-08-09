@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import secrets
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -34,8 +35,26 @@ REDIRECT_URI = f"http://127.0.0.1:{REDIRECT_PORT}/callback"
 
 def load_app_keys() -> dict:
     if KEYS_FILE.exists():
-        return json.loads(KEYS_FILE.read_text(encoding="utf-8"))
+        try:
+            return json.loads(KEYS_FILE.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
     return {}
+
+
+def save_app_keys(keys: dict) -> None:
+    """Zapisuje klucze aplikacji (wywoływane z dialogu ustawień w UI)."""
+    KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    KEYS_FILE.write_text(json.dumps(keys, indent=2, ensure_ascii=False),
+                         encoding="utf-8")
+
+
+def has_app_keys(provider: str) -> bool:
+    """Czy użytkownik wpisał prawdziwe klucze (nie placeholdery)?"""
+    keys = load_app_keys().get(provider, {})
+    cid, secret = keys.get("client_id", ""), keys.get("client_secret", "")
+    return bool(cid and secret
+                and not cid.startswith("WPISZ") and not secret.startswith("WPISZ"))
 
 
 def _save_tokens(tokens: dict) -> None:
@@ -87,10 +106,15 @@ class _CallbackHandler(BaseHTTPRequestHandler):
         pass
 
 
-def oauth2_authorize(auth_url: str, extra_params: dict) -> str:
+def oauth2_authorize(auth_url: str, extra_params: dict,
+                     cancel_event: Optional[threading.Event] = None,
+                     timeout_s: int = 300) -> str:
     """
     Otwiera przeglądarkę ze stroną logowania i czeka na kod autoryzacyjny
     (lokalny serwer na REDIRECT_PORT). Zwraca "code".
+
+    UWAGA: funkcja blokująca — wywołuj z wątku roboczego, nie z wątku UI!
+    cancel_event pozwala przerwać oczekiwanie (przycisk Anuluj w UI).
     """
     state = secrets.token_urlsafe(16)
     params = {"redirect_uri": REDIRECT_URI, "state": state, **extra_params}
@@ -99,19 +123,24 @@ def oauth2_authorize(auth_url: str, extra_params: dict) -> str:
     _CallbackHandler.code = None
     _CallbackHandler.state = None
     server = HTTPServer(("127.0.0.1", REDIRECT_PORT), _CallbackHandler)
-    server.timeout = 180  # maks. 3 min na zalogowanie
+    server.timeout = 1.0  # krótki — żeby reagować na Anuluj
 
     webbrowser.open(url)
-    # Czekamy na jedno żądanie callbacku (użytkownik loguje się w przeglądarce).
-    while _CallbackHandler.code is None and _CallbackHandler.state is None:
-        server.handle_request()
-        if _CallbackHandler.code or _CallbackHandler.state:
-            break
-        break  # timeout -> wyjście z pętli, code pozostaje None
-    server.server_close()
+    deadline = time.monotonic() + timeout_s
+    try:
+        while time.monotonic() < deadline:
+            if cancel_event is not None and cancel_event.is_set():
+                raise FileSystemError("Logowanie anulowane przez użytkownika.")
+            server.handle_request()  # czeka maks. server.timeout
+            if _CallbackHandler.code or _CallbackHandler.state:
+                break
+    finally:
+        server.server_close()
 
     if not _CallbackHandler.code:
-        raise FileSystemError("Logowanie anulowane lub brak kodu autoryzacyjnego.")
+        raise FileSystemError(
+            "Logowanie nie powiodło się (brak kodu autoryzacyjnego). "
+            "Sprawdź redirect URI w konsoli dostawcy.")
     if _CallbackHandler.state != state:
         raise FileSystemError("Nieprawidłowy parametr state (ochrona CSRF).")
     return _CallbackHandler.code

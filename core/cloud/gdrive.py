@@ -32,13 +32,13 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
-def connect_gdrive() -> "GDriveFileSystem":
+def connect_gdrive(cancel_event=None) -> "GDriveFileSystem":
     keys = load_app_keys().get("gdrive", {})
     client_id, client_secret = keys.get("client_id"), keys.get("client_secret")
-    if not client_id or not client_secret:
+    if not client_id or not client_secret or client_id.startswith("WPISZ"):
         raise FileSystemError(
             "Brak kluczy aplikacji Google Drive.\n"
-            "Uzupełnij config/cloud_keys.json (patrz: config/cloud_keys.example.json).")
+            "Wpisz je w: Plik → Klucze API chmur…")
 
     saved = get_saved_token("gdrive")
     if saved and saved.get("refresh_token"):
@@ -53,6 +53,7 @@ def connect_gdrive() -> "GDriveFileSystem":
         "https://accounts.google.com/o/oauth2/v2/auth",
         {"client_id": client_id, "response_type": "code",
          "scope": " ".join(SCOPES), "access_type": "offline", "prompt": "consent"},
+        cancel_event=cancel_event,
     )
     resp = requests.post("https://oauth2.googleapis.com/token", data={
         "code": code, "grant_type": "authorization_code",

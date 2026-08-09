@@ -33,14 +33,14 @@ AUTH = "https://login.microsoftonline.com/common/oauth2/v2.0"
 SCOPES = "Files.ReadWrite.All offline_access"
 
 
-def connect_onedrive() -> "OneDriveFileSystem":
+def connect_onedrive(cancel_event=None) -> "OneDriveFileSystem":
     keys = load_app_keys().get("onedrive", {})
     client_id = keys.get("client_id")
     client_secret = keys.get("client_secret")
-    if not client_id or not client_secret:
+    if not client_id or not client_secret or client_id.startswith("WPISZ"):
         raise FileSystemError(
             "Brak kluczy aplikacji OneDrive (Azure).\n"
-            "Uzupełnij config/cloud_keys.json (patrz: config/cloud_keys.example.json).")
+            "Wpisz je w: Plik → Klucze API chmur…")
 
     saved = get_saved_token("onedrive")
     if saved and saved.get("refresh_token"):
@@ -53,7 +53,7 @@ def connect_onedrive() -> "OneDriveFileSystem":
 
     code = oauth2_authorize(f"{AUTH}/authorize", {
         "client_id": client_id, "response_type": "code", "scope": SCOPES,
-    })
+    }, cancel_event=cancel_event)
     resp = requests.post(f"{AUTH}/token", data={
         "code": code, "grant_type": "authorization_code",
         "redirect_uri": REDIRECT_URI,

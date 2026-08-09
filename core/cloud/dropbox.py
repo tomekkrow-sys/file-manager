@@ -31,15 +31,15 @@ API = "https://api.dropboxapi.com/2"
 CONTENT = "https://content.dropboxapi.com/2"
 
 
-def connect_dropbox() -> "DropboxFileSystem":
+def connect_dropbox(cancel_event=None) -> "DropboxFileSystem":
     """Pełny przepływ logowania — zwraca gotowy provider."""
     keys = load_app_keys().get("dropbox", {})
     app_key = keys.get("client_id")
     app_secret = keys.get("client_secret")
-    if not app_key or not app_secret:
+    if not app_key or not app_secret or app_key.startswith("WPISZ"):
         raise FileSystemError(
             "Brak kluczy aplikacji Dropbox.\n"
-            "Uzupełnij config/cloud_keys.json (patrz: config/cloud_keys.example.json).")
+            "Wpisz je w: Plik → Klucze API chmur…")
 
     saved = get_saved_token("dropbox")
     if saved and saved.get("refresh_token"):
@@ -53,6 +53,7 @@ def connect_dropbox() -> "DropboxFileSystem":
     code = oauth2_authorize(
         "https://www.dropbox.com/oauth2/authorize",
         {"client_id": app_key, "response_type": "code", "token_access_type": "offline"},
+        cancel_event=cancel_event,
     )
     resp = requests.post("https://api.dropboxapi.com/oauth2/token", data={
         "code": code, "grant_type": "authorization_code",

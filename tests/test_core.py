@@ -174,3 +174,36 @@ def test_sftp_connection_refused_gives_filesystemerror():
     from core.sftp_fs import SftpFileSystem
     with pytest.raises(FileSystemError, match="SSH"):
         SftpFileSystem("127.0.0.1", port=1, timeout=2)
+
+
+# ---------- Chmury: klucze i OAuth ----------
+
+def test_has_app_keys_detects_placeholders(tmp_path, monkeypatch):
+    from core.cloud import base
+    keys_file = tmp_path / "cloud_keys.json"
+    monkeypatch.setattr(base, "KEYS_FILE", keys_file)
+
+    assert not base.has_app_keys("gdrive")  # plik nie istnieje
+
+    base.save_app_keys({"gdrive": {"client_id": "WPISZ_CLIENT_ID",
+                                   "client_secret": "WPISZ_SECRET"}})
+    assert not base.has_app_keys("gdrive")  # placeholdery
+
+    base.save_app_keys({"gdrive": {"client_id": "123.apps.googleusercontent.com",
+                                   "client_secret": "GOCSPX-real"}})
+    assert base.has_app_keys("gdrive")  # prawdziwe klucze
+
+
+def test_oauth_cancel_event(tmp_path, monkeypatch):
+    """Anulowanie podczas oczekiwania przerywa przepływ OAuth."""
+    import threading
+    from core.cloud import base
+
+    cancel = threading.Event()
+    cancel.set()  # od razu anulowane
+    monkeypatch.setattr(base, "webbrowser", type("W", (), {"open": staticmethod(lambda u: True)}))
+    monkeypatch.setattr(base, "REDIRECT_PORT", 18765)  # wolny port testowy
+
+    with pytest.raises(FileSystemError, match="anulowane"):
+        base.oauth2_authorize("https://example.com/auth", {"client_id": "x"},
+                              cancel_event=cancel)

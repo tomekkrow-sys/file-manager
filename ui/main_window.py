@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
@@ -44,6 +45,25 @@ class _DirLoader(QThread):
             self.loaded.emit(list(self._provider.list_dir(self._path)))
         except FileSystemError as exc:
             self.failed.emit(str(exc))
+
+
+class _CloudConnector(QThread):
+    """Logowanie OAuth do chmury w tle — nie blokuje okna."""
+    connected = Signal(object)   # gotowy FileSystemProvider
+    failed = Signal(str)
+
+    def __init__(self, connect_fn, parent=None):
+        super().__init__(parent)
+        self._connect_fn = connect_fn
+        self.cancel_event = threading.Event()
+
+    def run(self) -> None:
+        try:
+            self.connected.emit(self._connect_fn(cancel_event=self.cancel_event))
+        except FileSystemError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # ostatnia linia obrony — nigdy crash UI
+            self.failed.emit(f"Nieoczekiwany błąd: {exc}")
 
 
 class MainWindow(QMainWindow):
@@ -124,6 +144,7 @@ class MainWindow(QMainWindow):
         add("☁  Google Drive…", "gdrive")
         add("☁  Dropbox…", "dropbox")
         add("☁  OneDrive…", "onedrive")
+        add("⚙  Klucze API chmur…", "cloud_keys")
         self.places.blockSignals(False)
 
     def _on_place_changed(self, row: int) -> None:
@@ -147,11 +168,13 @@ class MainWindow(QMainWindow):
         elif action == "ftp_server":
             self._manage_ftp_server()
         elif action == "gdrive":
-            self._connect_cloud(connect_gdrive)
+            self._connect_cloud(connect_gdrive, "gdrive")
         elif action == "dropbox":
-            self._connect_cloud(connect_dropbox)
+            self._connect_cloud(connect_dropbox, "dropbox")
         elif action == "onedrive":
-            self._connect_cloud(connect_onedrive)
+            self._connect_cloud(connect_onedrive, "onedrive")
+        elif action == "cloud_keys":
+            self._show_cloud_keys()
 
     # ==================================================
     # Połączenia sieciowe
@@ -189,13 +212,50 @@ class MainWindow(QMainWindow):
             return
         self._switch_provider(fs, "/")
 
-    def _connect_cloud(self, connect_fn) -> None:
-        try:
-            fs = connect_fn()
-        except FileSystemError as exc:
-            QMessageBox.critical(self, "Chmura", str(exc))
+    def _connect_cloud(self, connect_fn, provider_key: str = "") -> None:
+        # Brak kluczy? Od razu zaproponuj otwarcie ustawień.
+        from core.cloud.base import has_app_keys, get_saved_token
+        if provider_key and not has_app_keys(provider_key) \
+                and not get_saved_token(provider_key):
+            answer = QMessageBox.question(
+                self, "Chmura",
+                "Najpierw musisz wpisać klucze API tej chmury.\n"
+                "Otworzyć ustawienia kluczy?")
+            if answer == QMessageBox.StandardButton.Yes:
+                self._show_cloud_keys()
             return
-        self._switch_provider(fs, "/")
+
+        progress = QProgressDialog(
+            "Otworzono przeglądarkę — zaloguj się do chmury.\n"
+            "Po zalogowaniu wróć tutaj (okno zamknie się samo).",
+            "Anuluj", 0, 0, self)
+        progress.setWindowTitle("Logowanie do chmury")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+
+        connector = _CloudConnector(connect_fn, self)
+        self._cloud_connector = connector
+        progress.canceled.connect(connector.cancel_event.set)
+
+        def on_connected(fs):
+            progress.close()
+            self._switch_provider(fs, "/")
+
+        def on_failed(message: str):
+            progress.close()
+            if "anulowane" not in message:
+                QMessageBox.critical(self, "Chmura", message)
+            self.status_label.setText("")
+
+        connector.connected.connect(on_connected)
+        connector.failed.connect(on_failed)
+        connector.finished.connect(connector.deleteLater)
+        connector.start()
+
+    def _show_cloud_keys(self) -> None:
+        from ui.cloud_keys_dialog import CloudKeysDialog
+        CloudKeysDialog(self).exec()
 
     def _manage_ftp_server(self) -> None:
         if self.ftp_server.is_running():
@@ -493,6 +553,8 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         add("Analiza pamięci…", self._show_storage_analysis)
         menu.addSeparator()
+        add("Klucze API chmur…", self._show_cloud_keys)
+        menu.addSeparator()
         add("Zakończ", self.close, "Ctrl+Q")
 
     def _context_menu(self, pos) -> None:
@@ -520,6 +582,9 @@ class MainWindow(QMainWindow):
     # ==================================================
     def closeEvent(self, event) -> None:
         self.ftp_server.stop()
+        if hasattr(self, "_cloud_connector") and self._cloud_connector.isRunning():
+            self._cloud_connector.cancel_event.set()
+            self._cloud_connector.wait(2000)
         if hasattr(self.provider, "disconnect"):
             self.provider.disconnect()
         for op in self._operations:
