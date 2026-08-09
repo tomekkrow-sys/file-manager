@@ -41,14 +41,113 @@ python3 -m venv .venv
 
 ## Konfiguracja chmur (OAuth2)
 
-1. Skopiuj `config/cloud_keys.example.json` → `config/cloud_keys.json`.
-2. Zarejestruj darmową aplikację u dostawcy i wpisz `client_id` / `client_secret`:
-   - **Dropbox**: https://www.dropbox.com/developers/apps (Scoped access → Full Dropbox)
-   - **Google Drive**: https://console.cloud.google.com (Credentials → OAuth client ID, typ Web)
-   - **OneDrive**: https://portal.azure.com (App registrations → Web redirect URI)
-3. W każdej konsoli ustaw redirect URI: `http://127.0.0.1:8765/callback`
-4. Kliknij chmurę w panelu bocznym — otworzy się przeglądarka z logowaniem.
-   Token zapisuje się w `~/.config/File_Manager/cloud_tokens.json`.
+Klucze wpisujesz wygodnie w programie: **Plik → Klucze API chmur…**
+(lub ręcznie w `config/cloud_keys.json` — wzorzec w `config/cloud_keys.example.json`).
+
+Poniżej dokładne instrukcje dla każdego dostawcy.
+
+---
+
+### Google Drive — krok po kroku
+*(zweryfikowane z aktualnym interfejsem Google Cloud Console, sierpień 2026)*
+
+> ⚠️ Interfejs Google się zmienił: dawny „OAuth consent screen" to teraz
+> **Google Auth Platform** (sekcje: Branding / Audience / Data Access / Clients).
+
+**Krok 1 — utwórz projekt**
+1. Wejdź na https://console.cloud.google.com i zaloguj się kontem Google.
+2. U góry kliknij selektor projektu → **New Project**.
+3. Nazwa: np. `file-manager` → **Create**.
+4. **Przełącz się na nowy projekt** w selektorze u góry (częsty błąd: konfigurowanie OAuth na złym projekcie).
+
+**Krok 2 — włącz Google Drive API**
+1. Menu ☰ → **APIs & Services** → **Library**.
+2. Wyszukaj **Google Drive API** → otwórz → **Enable**.
+
+**Krok 3 — skonfiguruj Google Auth Platform (ekran zgody)**
+1. Menu ☰ → **APIs & Services** → **OAuth consent screen**
+   (lub bezpośrednio: https://console.cloud.google.com/auth/branding).
+2. Jeśli widzisz „Google Auth Platform not configured yet" → kliknij **Get Started**.
+3. **App Information**: nazwa aplikacji np. `File Manager` + Twój email → **Next**.
+4. **Audience**: wybierz **External** → **Next**.
+5. **Contact Information**: Twój email → **Next** → zaznacz zgodę na politykę → **Create**.
+
+**Krok 4 — dodaj zakres Drive (Data Access)**
+1. Wejdź w **Data Access** (https://console.cloud.google.com/auth/scopes).
+2. **Add or remove scopes** → znajdź i zaznacz:
+   `https://www.googleapis.com/auth/drive` → **Update** → **Save**.
+
+**Krok 5 — dodaj siebie jako użytkownika testowego**
+1. Wejdź w **Audience** (https://console.cloud.google.com/auth/audience).
+2. W sekcji **Test users** → **Add users** → wpisz **swój adres Gmail** → **Save**.
+   (Bez tego logowanie zakończy się błędem „access_denied" —
+   aplikacja niezweryfikowana działa tylko dla użytkowników testowych.)
+
+**Krok 6 — utwórz klucze OAuth**
+1. Wejdź w **Clients** (https://console.cloud.google.com/auth/clients) → **Create Client**.
+2. **Application type**: **Web application**.
+3. Nazwa: dowolna (np. `file-manager-desktop`).
+4. **Authorized redirect URIs** → **Add URI** → wpisz dokładnie:
+   ```
+   http://127.0.0.1:8765/callback
+   ```
+5. **Create**.
+6. ⚠️ **Skopiuj Client ID i Client Secret od razu** — od 2025 r. Google
+   pokazuje client secret **tylko raz** (potem trzeba tworzyć nowy klient).
+
+**Krok 7 — wpisz klucze w File Managerze**
+1. Uruchom `./run.sh` → menu **Plik → Klucze API chmur…**.
+2. W sekcji **Google Drive** wklej Client ID i Client Secret → **Zapisz**.
+
+**Krok 8 — zaloguj się**
+1. Panel boczny → **☁ Google Drive…** (otworzy się przeglądarka).
+2. Wybierz konto → pojawi się ostrzeżenie **„Google hasn't verified this app"**
+   → kliknij **Advanced** → **Go to File Manager (unsafe)**
+   (to bezpieczne — to Twoja własna, zarejestrowana przez Ciebie aplikacja).
+3. Zaznacz zgodę na dostęp do plików Drive → karta wyświetli
+   „Logowanie zakończone" → wróć do programu.
+
+Token zapisuje się w `~/.config/File_Manager/cloud_tokens.json` i odświeża się
+automatycznie — logujesz się tylko raz.
+
+**Najczęstsze błędy:**
+| Objaw | Przyczyna i rozwiązanie |
+|---|---|
+| `Error 400: redirect_uri_mismatch` | Redirect URI w kroku 6 musi być dokładnie `http://127.0.0.1:8765/callback` (bez spacji, bez https) |
+| `access_denied` / `Error 403` | Nie dodałeś swojego Gmaila w Audience → Test users (krok 5) |
+| `invalid_scope` | Brak zakresu `.../auth/drive` w Data Access (krok 4) |
+| „client_secret nie działa" | Secret był pokazany tylko raz — utwórz nowy klient (krok 6) |
+| Zmieniłeś coś, a dalej błąd | Usuń `~/.config/File_Manager/cloud_tokens.json` i zaloguj ponownie |
+
+---
+
+### Dropbox — krok po kroku
+
+1. Wejdź na https://www.dropbox.com/developers/apps → **Create app**.
+2. Wybierz: **Scoped access** → **Full Dropbox** → nazwa np. `file-manager` → **Create app**.
+3. Na karcie **Settings** aplikacji:
+   - w polu **Redirect URIs** wpisz `http://127.0.0.1:8765/callback` → **Add**,
+   - skopiuj **App key** i **App secret**.
+4. Na karcie **Permissions** zaznacz: `files.content.read`, `files.content.write`,
+   `files.metadata.read`, `files.metadata.write` → **Submit**.
+5. W File Managerze: **Plik → Klucze API chmur…** → sekcja **Dropbox**
+   (App key → Client ID, App secret → Client Secret) → Zapisz.
+6. Panel boczny → **☁ Dropbox…** → zaloguj się w przeglądarce.
+
+---
+
+### OneDrive — krok po kroku
+
+1. Wejdź na https://portal.azure.com → wyszukaj **App registrations** → **New registration**.
+2. Nazwa: np. `File Manager`; typ kont: **Accounts in any organizational directory
+   and personal Microsoft accounts** → **Register**.
+3. Skopiuj **Application (client) ID** ze strony przeglądu.
+4. **Authentication** → **Add a platform** → **Web** → redirect URI:
+   `http://127.0.0.1:8765/callback` → **Configure**.
+5. **Certificates & secrets** → **New client secret** → opis dowolny → **Add** →
+   skopiuj **Value** (pokazywany tylko raz!).
+6. W File Managerze: **Plik → Klucze API chmur…** → sekcja **OneDrive** → Zapisz.
+7. Panel boczny → **☁ OneDrive…** → zaloguj się kontem Microsoft.
 
 ## Serwer FTP (dostęp z PC)
 
