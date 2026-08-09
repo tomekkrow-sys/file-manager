@@ -167,3 +167,10 @@ def test_ftp_connection_refused_gives_filesystemerror():
     from core.ftp_fs import FtpFileSystem
     with pytest.raises(FileSystemError, match="FTP"):
         FtpFileSystem("127.0.0.1", port=1, timeout=2)  # port 1 — nic nie nasłuchuje
+
+
+def test_sftp_connection_refused_gives_filesystemerror():
+    """To samo dla SFTP/SSH."""
+    from core.sftp_fs import SftpFileSystem
+    with pytest.raises(FileSystemError, match="SSH"):
+        SftpFileSystem("127.0.0.1", port=1, timeout=2)

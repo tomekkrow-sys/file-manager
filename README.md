@@ -18,6 +18,7 @@ wszystkich źródeł), obsługa archiwów na bibliotece standardowej (jak
 | Archiwa: kompresja **ZIP**, dekompresja **ZIP/TAR/GZ/XZ/BZ2** | ✅ | `core/archives.py` (ochrona zip-slip) |
 | Podgląd zawartości archiwum | ✅ | `archives.list_archive()` |
 | FTP — klient | ✅ | `core/ftp_fs.py` (`ftplib`) |
+| SSH — SFTP (port 22, hasło lub klucz z `~/.ssh`) | ✅ | `core/sftp_fs.py` (`paramiko`) |
 | FTP — serwer („dostęp z PC") | ✅ | `core/ftp_server.py` (`pyftpdlib`) |
 | NAS — SMB2/3 | ✅ | `core/smb_fs.py` (`smbprotocol`) |
 | Chmury: Google Drive / Dropbox / OneDrive | ✅ | `core/cloud/` (OAuth2, REST API) |
@@ -62,6 +63,7 @@ core/
   fs_base.py             # abstrakcja FileSystemProvider + FileInfo (jak FmFileInfo z libfm)
   local_fs.py            # provider lokalny
   ftp_fs.py              # provider FTP (klient)
+  sftp_fs.py             # provider SFTP (SSH, port 22)
   ftp_server.py          # serwer FTP (dostęp z PC)
   smb_fs.py              # provider NAS/SMB
   operations.py          # operacje wsadowe w wątkach (QThread + sygnały)

@@ -21,9 +21,12 @@ from core.ftp_fs import FtpFileSystem
 from core.ftp_server import LocalFtpServer
 from core.local_fs import LocalFileSystem
 from core.operations import CopyOperation, DeleteOperation, MoveOperation
+from core.sftp_fs import SftpFileSystem
 from core.smb_fs import SmbFileSystem
 from core.storage_analysis import human_size
-from ui.dialogs import FtpConnectDialog, FtpServerDialog, SmbConnectDialog
+from ui.dialogs import (
+    FtpConnectDialog, FtpServerDialog, SftpConnectDialog, SmbConnectDialog,
+)
 from ui.file_list import FileListModel, FileListView
 
 
@@ -113,6 +116,7 @@ class MainWindow(QMainWindow):
         self.places.addItem("── Sieć ──")
         self._places_map.append(("sep", None))
         add("➕  Połącz FTP…", "ftp")
+        add("➕  Połącz SSH (SFTP)…", "sftp")
         add("➕  Połącz NAS (SMB)…", "smb")
         add("📡  Udostępnij przez FTP…", "ftp_server")
         self.places.addItem("── Chmury ──")
@@ -136,6 +140,8 @@ class MainWindow(QMainWindow):
             self._show_storage_analysis()
         elif action == "ftp":
             self._connect_ftp()
+        elif action == "sftp":
+            self._connect_sftp()
         elif action == "smb":
             self._connect_smb()
         elif action == "ftp_server":
@@ -158,6 +164,17 @@ class MainWindow(QMainWindow):
             fs = FtpFileSystem(**dlg.params())
         except FileSystemError as exc:
             QMessageBox.critical(self, "FTP", str(exc))
+            return
+        self._switch_provider(fs, "/")
+
+    def _connect_sftp(self) -> None:
+        dlg = SftpConnectDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            fs = SftpFileSystem(**dlg.params())
+        except FileSystemError as exc:
+            QMessageBox.critical(self, "SSH", str(exc))
             return
         self._switch_provider(fs, "/")
 

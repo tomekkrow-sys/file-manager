@@ -56,6 +56,47 @@ class FtpConnectDialog(QDialog):
         }
 
 
+class SftpConnectDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Połącz przez SSH (SFTP)")
+        form = QFormLayout()
+
+        self.host = QLineEdit(placeholderText="np. 192.168.1.20 lub omv.local")
+        self.port = QSpinBox(minimum=1, maximum=65535, value=22)
+        self.user = QLineEdit(placeholderText="np. root")
+        self.password = QLineEdit(echoMode=QLineEdit.EchoMode.Password,
+                                  placeholderText="puste = klucz z ~/.ssh")
+
+        form.addRow("Adres serwera:", self.host)
+        form.addRow("Port:", self.port)
+        form.addRow("Użytkownik:", self.user)
+        form.addRow("Hasło:", self.password)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self._validate)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+
+    def _validate(self) -> None:
+        if not self.host.text().strip():
+            QMessageBox.warning(self, "SSH", "Podaj adres serwera.")
+            return
+        self.accept()
+
+    def params(self) -> dict:
+        return {
+            "host": self.host.text().strip(),
+            "port": self.port.value(),
+            "user": self.user.text().strip(),
+            "password": self.password.text(),
+        }
+
+
 class SmbConnectDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
