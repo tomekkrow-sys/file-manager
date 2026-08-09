@@ -139,8 +139,13 @@ class FileListView(QTableView):
         self.doubleClicked.connect(self._on_double)
 
         header = self.horizontalHeader()
-        header.setStretchLastSection(True)
+        # Kolumna "Nazwa" zajmuje całą wolną przestrzeń — długie nazwy
+        # nie są ucinane; pozostałe kolumny dopasowują się do treści.
+        header.setStretchLastSection(False)
         header.setSectionResizeMode(0, header.ResizeMode.Stretch)
+        for col in (1, 2, 3):
+            header.setSectionResizeMode(col, header.ResizeMode.ResizeToContents)
+        header.setMinimumSectionSize(70)
 
         self._double_handler = None
 
@@ -159,6 +164,6 @@ class FileListView(QTableView):
         return [model.item_at(r) for r in sorted(rows) if model.item_at(r)]
 
     def refresh_column_sizes(self) -> None:
-        self.resizeColumnToContents(1)
-        self.resizeColumnToContents(2)
-        self.resizeColumnToContents(3)
+        # Kolumny 1-3 mają ResizeToContents — nic do robienia.
+        # Metoda zostaje jako stabilny punkt API dla main_window.
+        pass
