@@ -61,8 +61,17 @@ Poniżej dokładne instrukcje dla każdego dostawcy.
 4. **Przełącz się na nowy projekt** w selektorze u góry (częsty błąd: konfigurowanie OAuth na złym projekcie).
 
 **Krok 2 — włącz Google Drive API**
-1. Menu ☰ → **APIs & Services** → **Library**.
-2. Wyszukaj **Google Drive API** → otwórz → **Enable**.
+
+Najszybciej — bezpośredni link (od razu proponuje włączenie):
+https://console.cloud.google.com/flows/enableapi?apiid=drive.googleapis.com
+
+Albo ręcznie:
+1. Menu ☰ → **APIs & Services** → **Library**
+   (https://console.cloud.google.com/apis/library).
+2. Wyszukaj **Google Drive API** → otwórz
+   (https://console.cloud.google.com/apis/library/drive.googleapis.com) → **Enable**.
+
+⚠️ Sprawdź selektor projektu u góry — API musi włączyć się w projekcie `file-manager`.
 
 **Krok 3 — skonfiguruj Google Auth Platform (ekran zgody)**
 1. Menu ☰ → **APIs & Services** → **OAuth consent screen**
