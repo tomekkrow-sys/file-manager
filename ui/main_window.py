@@ -426,6 +426,9 @@ class MainWindow(QMainWindow):
             return
         self._clipboard = [(self.provider, i.path) for i in sel]
         self._clipboard_cut = cut
+        # Graficzne oznaczenie pozycji w schowku
+        model: FileListModel = self.file_list.model()
+        model.set_clipboard_highlight({p for _, p in self._clipboard}, cut)
         self.status_label.setText(
             f"Schowek: {len(sel)} pozycji ({'wytnij' if cut else 'kopiuj'}) — "
             "przejdź do celu i wciśnij Wklej.")
@@ -433,8 +436,19 @@ class MainWindow(QMainWindow):
     def _paste(self) -> None:
         if not self._clipboard:
             return
-        cls = MoveOperation if self._clipboard_cut else CopyOperation
-        self._run_operation(cls(self._clipboard, self.provider, self.current_path, self))
+        was_cut = self._clipboard_cut
+        cls = MoveOperation if was_cut else CopyOperation
+        op = cls(self._clipboard, self.provider, self.current_path, self)
+        if was_cut:
+            # Po przeniesieniu schowek się czyści (jak w innych menedżerach)
+            op.finished_all.connect(self._clear_clipboard)
+        self._run_operation(op)
+
+    def _clear_clipboard(self, *args) -> None:
+        self._clipboard = []
+        self._clipboard_cut = False
+        model: FileListModel = self.file_list.model()
+        model.set_clipboard_highlight(set(), False)
 
     def _delete_selected(self) -> None:
         sel = self._selected()

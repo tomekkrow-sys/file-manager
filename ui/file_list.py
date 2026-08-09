@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSize, Qt
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QBrush, QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QTableView
 
 from core.fs_base import FileInfo, FileSystemProvider
@@ -13,6 +13,10 @@ from core.local_fs import LocalFileSystem
 from core.storage_analysis import human_size
 
 COLS = ["Nazwa", "Rozmiar", "Zmodyfikowano", "Typ"]
+
+# Podświetlenie pozycji będących w schowku
+CLIPBOARD_COPY_COLOR = QColor("#cfe8ff")   # niebieskawy — kopiuj
+CLIPBOARD_CUT_COLOR = QColor("#ffe0b2")    # pomarańczowy — wytnij (przenieś)
 
 # Ikony tematu systemowego wg kategorii MIME
 MIME_ICONS = {
@@ -47,6 +51,19 @@ class FileListModel(QAbstractTableModel):
         self._provider: Optional[FileSystemProvider] = None
         self.show_hidden = False
         self._thumbs: dict[str, QIcon] = {}
+        # Ścieżki w schowku (podświetlane) + tryb (False=kopiuj, True=wytnij)
+        self._clipboard_paths: set[str] = set()
+        self._clipboard_cut = False
+
+    def set_clipboard_highlight(self, paths: set[str], cut: bool) -> None:
+        """Oznacza graficznie pozycje znajdujące się w schowku."""
+        self._clipboard_paths = paths
+        self._clipboard_cut = cut
+        if self._items:
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(len(self._items) - 1, len(COLS) - 1),
+                [Qt.ItemDataRole.BackgroundRole])
 
     def set_content(self, provider: FileSystemProvider, items: List[FileInfo]) -> None:
         self.beginResetModel()
@@ -99,6 +116,12 @@ class FileListModel(QAbstractTableModel):
                 if not self._thumbs[info.path].isNull():
                     return self._thumbs[info.path]
             return _icon_for(info)
+
+        if role == Qt.ItemDataRole.BackgroundRole:
+            if info.path in self._clipboard_paths:
+                color = (CLIPBOARD_CUT_COLOR if self._clipboard_cut
+                         else CLIPBOARD_COPY_COLOR)
+                return QBrush(color)
 
         if role == Qt.ItemDataRole.TextAlignmentRole and col == 1:
             return Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
