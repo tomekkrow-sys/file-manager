@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
         self._clipboard_cut = False
         self._operations: list = []
         self._loader: Optional[_DirLoader] = None
+        self._cloud_connector: Optional[_CloudConnector] = None
         self.ftp_server = LocalFtpServer()
 
         # ----- sidebar źródeł -----
@@ -240,10 +241,12 @@ class MainWindow(QMainWindow):
 
         def on_connected(fs):
             progress.close()
+            self._cloud_connector = None
             self._switch_provider(fs, "/")
 
         def on_failed(message: str):
             progress.close()
+            self._cloud_connector = None
             if "anulowane" not in message:
                 QMessageBox.critical(self, "Chmura", message)
             self.status_label.setText("")
@@ -582,9 +585,14 @@ class MainWindow(QMainWindow):
     # ==================================================
     def closeEvent(self, event) -> None:
         self.ftp_server.stop()
-        if hasattr(self, "_cloud_connector") and self._cloud_connector.isRunning():
-            self._cloud_connector.cancel_event.set()
-            self._cloud_connector.wait(2000)
+        connector = getattr(self, "_cloud_connector", None)
+        if connector is not None:
+            try:
+                if connector.isRunning():
+                    connector.cancel_event.set()
+                    connector.wait(2000)
+            except RuntimeError:
+                pass  # obiekt C++ już usunięty — nic do sprzątania
         if hasattr(self.provider, "disconnect"):
             self.provider.disconnect()
         for op in self._operations:
