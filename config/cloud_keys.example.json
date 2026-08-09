@@ -1,0 +1,19 @@
+{
+  "_opis": "Klucze aplikacji OAuth2. Każdy provider wymaga rejestracji własnej (darmowej) aplikacji u dostawcy. Redirect URI do wpisania w konsoli dostawcy: http://127.0.0.1:8765/callback",
+  "_dropbox": "https://www.dropbox.com/developers/apps -> Create app -> Scoped access -> Full Dropbox",
+  "_gdrive": "https://console.cloud.google.com -> APIs & Services -> Credentials -> OAuth client ID (Web application)",
+  "_onedrive": "https://portal.azure.com -> App registrations -> New registration -> Web redirect URI",
+
+  "dropbox": {
+    "client_id": "WPISZ_APP_KEY",
+    "client_secret": "WPISZ_APP_SECRET"
+  },
+  "gdrive": {
+    "client_id": "WPISZ_CLIENT_ID.apps.googleusercontent.com",
+    "client_secret": "WPISZ_CLIENT_SECRET"
+  },
+  "onedrive": {
+    "client_id": "WPISZ_APPLICATION_ID",
+    "client_secret": "WPISZ_CLIENT_SECRET"
+  }
+}
