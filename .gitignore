@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 config/cloud_keys.json
+
+# artefakty budowania
+build/
+dist/
+*.deb
+packaging/debian/opt/
+packaging/debian/usr/

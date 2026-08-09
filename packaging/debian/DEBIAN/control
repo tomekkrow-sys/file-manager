@@ -1,0 +1,11 @@
+Package: file-manager
+Version: 0.1.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: File Manager <fm@local>
+Description: Menedzer plikow: lokalne, FTP/SFTP, NAS (SMB), chmury
+ Menedzer plikow inspirowany File Manager Plus: przegladanie i operacje
+ na plikach lokalnych, FTP (klient i serwer), SFTP/SSH, udzialach NAS
+ (SMB), chmurach (Google Drive, Dropbox, OneDrive), archiwa ZIP/TAR/GZ/XZ,
+ wbudowane podglady mediow oraz analiza zajetosci dysku.

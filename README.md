@@ -44,6 +44,8 @@ Działa dla każdej pary: lokalne ⇄ FTP ⇄ SSH ⇄ NAS ⇄ chmury.
 
 ## Instalacja i uruchomienie
 
+### Ze źródeł (Linux)
+
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -52,10 +54,37 @@ python3 -m venv .venv
 ./run.sh
 ```
 
+### Pakiet .deb (Linux)
+
+```bash
+./build_deb.sh                                   # buduje file-manager_0.1.0_amd64.deb
+sudo dpkg -i file-manager_0.1.0_amd64.deb        # instalacja
+file-manager                                     # uruchomienie (lub z menu aplikacji)
+sudo apt remove file-manager                     # usunięcie
+```
+
+Pakiet instaluje się do `/opt/file-manager`, dodaje launcher `/usr/bin/file-manager`,
+wpis w menu aplikacji i ikonę. Klucze chmur i tokeny trzymane są w
+`~/.config/File_Manager/` (katalog programu jest tylko do odczytu).
+
+### Windows (.exe)
+
+Na komputerze z Windows (Python 3.11+ z python.org):
+```
+build_windows.bat
+```
+Wynik: `dist\file-manager\file-manager.exe` — cały folder to przenośna aplikacja.
+
+Alternatywnie po wrzuceniu repo na GitHub workflow
+`.github/workflows/build.yml` zbuduje automatycznie **Windows .zip** i
+**Linux .deb** (zakładka Actions → „Build installers" → Run workflow,
+albo przy tagu `v*`).
+
 ## Konfiguracja chmur (OAuth2)
 
 Klucze wpisujesz wygodnie w programie: **Plik → Klucze API chmur…**
-(lub ręcznie w `config/cloud_keys.json` — wzorzec w `config/cloud_keys.example.json`).
+(lub ręcznie w `~/.config/File_Manager/cloud_keys.json` —
+wzorzec w `config/cloud_keys.example.json`).
 
 Poniżej dokładne instrukcje dla każdego dostawcy.
 

@@ -27,7 +27,9 @@ from core.fs_base import FileSystemError, FileSystemProvider
 
 CONFIG_DIR = Path.home() / ".config" / "File_Manager"
 TOKENS_FILE = CONFIG_DIR / "cloud_tokens.json"
-KEYS_FILE = Path(__file__).resolve().parent.parent.parent / "config" / "cloud_keys.json"
+# Klucze trzymamy w katalogu użytkownika (katalog programu po instalacji
+# .deb do /opt jest tylko do odczytu). Wzór: config/cloud_keys.example.json
+KEYS_FILE = CONFIG_DIR / "cloud_keys.json"
 
 REDIRECT_PORT = 8765
 REDIRECT_URI = f"http://127.0.0.1:{REDIRECT_PORT}/callback"
