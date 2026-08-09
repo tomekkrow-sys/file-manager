@@ -158,3 +158,12 @@ def test_categorize():
     assert categorize(Path("c.pdf")) == "Dokumenty"
     assert categorize(Path("d.zip")) == "Archiwa"
     assert categorize(Path("e.bin")) == "Inne"
+
+
+# ---------- FTP: obsługa błędów połączenia ----------
+
+def test_ftp_connection_refused_gives_filesystemerror():
+    """Odrzucone połączenie ma dać FileSystemError, a nie TypeError/crash."""
+    from core.ftp_fs import FtpFileSystem
+    with pytest.raises(FileSystemError, match="FTP"):
+        FtpFileSystem("127.0.0.1", port=1, timeout=2)  # port 1 — nic nie nasłuchuje

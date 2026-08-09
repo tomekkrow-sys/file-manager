@@ -38,14 +38,14 @@ class FtpFileSystem(FileSystemProvider):
             self._ftp = ftplib.FTP()
             self._ftp.connect(self.host, self.port, timeout=self._timeout)
             self._ftp.login(self._user, self._password)
-        except (ftplib.all_errors, OSError) as exc:
+        except ftplib.all_errors as exc:  # all_errors zawiera już OSError
             raise FileSystemError(f"Nie można połączyć z FTP {self.host}: {exc}") from exc
 
     def _ensure(self) -> ftplib.FTP:
         assert self._ftp is not None
         try:
             self._ftp.voidcmd("NOOP")
-        except (ftplib.all_errors, OSError):
+        except ftplib.all_errors:
             self._connect()
         assert self._ftp is not None
         return self._ftp
