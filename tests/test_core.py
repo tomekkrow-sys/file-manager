@@ -207,3 +207,136 @@ def test_oauth_cancel_event(tmp_path, monkeypatch):
     with pytest.raises(FileSystemError, match="anulowane"):
         base.oauth2_authorize("https://example.com/auth", {"client_id": "x"},
                               cancel_event=cancel)
+
+
+# ---------- Analiza pamięci: pomijanie pseudosystemów (/proc/kcore) ----------
+
+def test_is_virtual_mount():
+    from core.storage_analysis import is_virtual_mount
+    mounts = {"/proc", "/sys"}
+    assert is_virtual_mount("/proc", mounts)
+    assert is_virtual_mount("/proc/", mounts)      # końcowy ukośnik nie szkodzi
+    assert is_virtual_mount("/sys", mounts)
+    assert not is_virtual_mount("/home/user", mounts)
+    assert not is_virtual_mount("/proc", set())    # brak mountów -> False
+
+
+def test_storage_analyzer_skips_virtual_root(tmp_path, monkeypatch):
+    """Analiza samego /proc (lub innego pseudosystemu) nie liczy niczego."""
+    from core import storage_analysis
+    from core.storage_analysis import StorageAnalyzer
+
+    monkeypatch.setattr(storage_analysis, "virtual_mount_points",
+                        lambda: {str(tmp_path)})
+    analyzer = StorageAnalyzer(str(tmp_path))
+    results = []
+    analyzer.finished_scan.connect(
+        lambda cat, large, total: results.append((cat, large, total)))
+    analyzer.run()
+    by_category, largest, total = results[0]
+    assert total == 0
+    assert largest == []
+
+
+def test_storage_analyzer_skips_virtual_subdir(tmp_path, monkeypatch):
+    """Katalog pseudosystemu jest pomijany — /proc/kcore nie fałszuje analizy."""
+    from core import storage_analysis
+    from core.storage_analysis import StorageAnalyzer
+
+    virtual = tmp_path / "proc"
+    virtual.mkdir()
+    (virtual / "kcore").write_bytes(b"\x00" * (1024 * 1024))  # "wielki" plik
+    normal = tmp_path / "dokumenty"
+    normal.mkdir()
+    (normal / "raport.txt").write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(storage_analysis, "virtual_mount_points",
+                        lambda: {str(virtual)})
+    analyzer = StorageAnalyzer(str(tmp_path))
+    results = []
+    analyzer.finished_scan.connect(
+        lambda cat, large, total: results.append((cat, large, total)))
+    analyzer.run()
+    by_category, largest, total = results[0]
+    assert total == 1  # tylko raport.txt
+    assert not any("kcore" in p for _, p in largest)
+
+
+# ---------- Zapisane połączenia ----------
+
+def test_connections_save_overwrite_remove(tmp_path, monkeypatch):
+    from core import connections
+    monkeypatch.setattr(connections, "CONNECTIONS_FILE",
+                        tmp_path / "connections.json")
+    assert connections.get_connections("sftp") == []
+
+    connections.save_connection("sftp", {"name": "serwer", "host": "1.2.3.4",
+                                         "port": 22, "user": "root"})
+    conns = connections.get_connections("sftp")
+    assert len(conns) == 1 and conns[0]["host"] == "1.2.3.4"
+
+    # ta sama nazwa = nadpisanie, bez duplikatów
+    connections.save_connection("sftp", {"name": "serwer", "host": "9.9.9.9"})
+    conns = connections.get_connections("sftp")
+    assert len(conns) == 1 and conns[0]["host"] == "9.9.9.9"
+
+    # pusta nazwa jest ignorowana
+    connections.save_connection("sftp", {"name": "", "host": "x"})
+    assert len(connections.get_connections("sftp")) == 1
+
+    connections.remove_connection("sftp", "serwer")
+    assert connections.get_connections("sftp") == []
+
+
+def test_get_all_connections(tmp_path, monkeypatch):
+    from core import connections
+    monkeypatch.setattr(connections, "CONNECTIONS_FILE",
+                        tmp_path / "connections.json")
+    connections.save_connection("sftp", {"name": "a", "host": "1"})
+    connections.save_connection("ftp", {"name": "b", "host": "2"})
+    kinds = [k for k, _ in connections.get_all_connections()]
+    assert kinds == ["ftp", "sftp"]  # ustalona kolejność typów
+
+
+def test_provider_params_filters_extras():
+    from core.connections import provider_params
+    raw = {"host": "h", "port": 22, "user": "u", "password": "x",
+           "name": "n", "save": True, "save_password": False}
+    assert provider_params("sftp", raw) == {"host": "h", "port": 22,
+                                            "user": "u", "password": "x"}
+    assert provider_params("ftp", raw) == {"host": "h", "port": 22,
+                                           "user": "u", "password": "x"}
+    assert provider_params("smb", raw) == {"host": "h", "user": "u",
+                                           "password": "x"}
+
+
+# ---------- Dialogi połączeń (smoke test UI) ----------
+
+def test_connect_dialogs_smoke():
+    """Dialogi FTP/SSH/NAS budują się i zwracają komplet parametrów."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+
+    from ui.dialogs import FtpConnectDialog, SftpConnectDialog, SmbConnectDialog
+
+    dlg = SftpConnectDialog()
+    dlg.host.setText("nas.local")
+    dlg.user.setText("tomek")
+    dlg.password.setText("sekret")
+    dlg.save_box.setChecked(True)
+    dlg.save_box.name.setText("mój serwer")
+    dlg.save_box.save_password.setChecked(True)
+    assert dlg.params() == {"host": "nas.local", "port": 22, "user": "tomek",
+                            "password": "sekret", "name": "mój serwer",
+                            "save": True, "save_password": True}
+
+    dlg = SmbConnectDialog()
+    dlg.host.setText("nas.local")
+    assert dlg.params()["host"] == "nas.local"
+
+    dlg = FtpConnectDialog()
+    assert dlg.params()["save"] is False  # domyślnie bez zapisywania
+    dlg.save_box.setChecked(True)
+    assert dlg.params()["save"] is True

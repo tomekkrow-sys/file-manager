@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import List, Optional
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSize, Qt
+from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, QSize, Qt
 from PySide6.QtGui import QBrush, QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QTableView
 
@@ -13,6 +14,9 @@ from core.local_fs import LocalFileSystem
 from core.storage_analysis import human_size
 
 COLS = ["Nazwa", "Rozmiar", "Zmodyfikowano", "Typ"]
+
+# Typ MIME przenoszonych pozycji (kopiowanie/przenoszenie myszką)
+FILE_MIME = "application/x-file-manager-paths"
 
 # Podświetlenie pozycji będących w schowku
 CLIPBOARD_COPY_COLOR = QColor("#cfe8ff")   # niebieskawy — kopiuj
@@ -74,6 +78,27 @@ class FileListModel(QAbstractTableModel):
 
     def item_at(self, row: int) -> Optional[FileInfo]:
         return self._items[row] if 0 <= row < len(self._items) else None
+
+    # ----- przeciąganie (drag & drop) -----
+    def mimeTypes(self) -> List[str]:
+        return [FILE_MIME]
+
+    def mimeData(self, indexes) -> QMimeData:
+        mime = QMimeData()
+        paths: List[str] = []
+        seen = set()
+        for idx in indexes:
+            if idx.column() != 0 or not idx.isValid():
+                continue
+            path = self._items[idx.row()].path
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+        mime.setData(FILE_MIME, json.dumps(paths).encode("utf-8"))
+        return mime
+
+    def canDropMimeData(self, data, action, row, column, parent) -> bool:
+        return data.hasFormat(FILE_MIME)
 
     # ----- QAbstractTableModel -----
     def rowCount(self, parent=QModelIndex()) -> int:
@@ -159,6 +184,9 @@ class FileListView(QTableView):
         self.setIconSize(QSize(22, 22))
         self.setSortingEnabled(True)
         self.setAlternatingRowColors(True)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QTableView.DragDropMode.DragDrop)
         self.doubleClicked.connect(self._on_double)
 
         header = self.horizontalHeader()
@@ -171,15 +199,59 @@ class FileListView(QTableView):
         header.setMinimumSectionSize(70)
 
         self._double_handler = None
+        self._drop_handler = None
 
     def on_double_click(self, handler) -> None:
         self._double_handler = handler
+
+    def set_drop_handler(self, handler) -> None:
+        """handler(paths: List[str], target_dir: Optional[str]) — kopiuje/przenosi."""
+        self._drop_handler = handler
 
     def _on_double(self, index: QModelIndex) -> None:
         if self._double_handler:
             info = index.data(Qt.ItemDataRole.UserRole)
             if info:
                 self._double_handler(info)
+
+    @staticmethod
+    def _paths_from(event) -> List[str]:
+        mime = event.mimeData()
+        if not mime.hasFormat(FILE_MIME):
+            return []
+        try:
+            return json.loads(bytes(mime.data(FILE_MIME)).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return []
+
+    def _drop_target_dir(self, pos) -> Optional[str]:
+        """Upuszczenie na wiersz katalogu = kopiowanie DO tego katalogu."""
+        idx = self.indexAt(pos)
+        if idx.isValid():
+            info = idx.data(Qt.ItemDataRole.UserRole)
+            if info and info.is_dir:
+                return info.path
+        return None
+
+    def dragEnterEvent(self, event) -> None:
+        if self._paths_from(event):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        if self._paths_from(event):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        paths = self._paths_from(event)
+        if not paths or self._drop_handler is None:
+            super().dropEvent(event)
+            return
+        self._drop_handler(paths, self._drop_target_dir(event.position().toPoint()))
+        event.acceptProposedAction()
 
     def selected_infos(self) -> List[FileInfo]:
         rows = {i.row() for i in self.selectionModel().selectedRows()}

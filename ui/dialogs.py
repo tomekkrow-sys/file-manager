@@ -8,6 +8,30 @@ from PySide6.QtWidgets import (
 )
 
 
+class _SaveConnectionWidget(QCheckBox):
+    """"Zapisz połączenie w pamięci" + opcjonalnie hasło.
+
+    Po zaznaczeniu dodaje pole "nazwa" i opcję zapisania hasła.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__("💾 Zapisz to połączenie w pamięci\n"
+                         "(szybki wybór z panelu bocznego)", parent)
+        self.name = QLineEdit(placeholderText="np. domowy serwer", parent=parent)
+        self.save_password = QCheckBox("Zapisz też hasło (lokalnie)", parent=parent)
+        self.save_password.setEnabled(False)
+        self.toggled.connect(self._update_state)
+        self.save_password.toggled.connect(self._update_state)
+
+    def _update_state(self, *args) -> None:
+        checked = self.isChecked()
+        self.name.setEnabled(checked)
+        self.save_password.setEnabled(checked)
+
+    def is_saving(self) -> bool:
+        return self.isChecked()
+
+
 class FtpConnectDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -25,11 +49,16 @@ class FtpConnectDialog(QDialog):
         self.user.setEnabled(False)
         self.password.setEnabled(False)
 
+        self.save_box = _SaveConnectionWidget(self)
+
         form.addRow("Adres serwera:", self.host)
         form.addRow("Port:", self.port)
         form.addRow(self.anonymous)
         form.addRow("Użytkownik:", self.user)
         form.addRow("Hasło:", self.password)
+        form.addRow(self.save_box)
+        form.addRow("Nazwa zapisu:", self.save_box.name)
+        form.addRow(self.save_box.save_password)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
@@ -44,6 +73,9 @@ class FtpConnectDialog(QDialog):
         if not self.host.text().strip():
             QMessageBox.warning(self, "FTP", "Podaj adres serwera.")
             return
+        if self.save_box.isChecked() and not self.save_box.name.text().strip():
+            QMessageBox.warning(self, "FTP", "Podaj nazwę zapisanego połączenia.")
+            return
         self.accept()
 
     def params(self) -> dict:
@@ -53,6 +85,9 @@ class FtpConnectDialog(QDialog):
             "port": self.port.value(),
             "user": "anonymous" if anon else self.user.text().strip(),
             "password": "" if anon else self.password.text(),
+            "name": self.save_box.name.text().strip() or self.host.text().strip(),
+            "save": self.save_box.isChecked(),
+            "save_password": self.save_box.save_password.isChecked(),
         }
 
 
@@ -68,10 +103,15 @@ class SftpConnectDialog(QDialog):
         self.password = QLineEdit(echoMode=QLineEdit.EchoMode.Password,
                                   placeholderText="puste = klucz z ~/.ssh")
 
+        self.save_box = _SaveConnectionWidget(self)
+
         form.addRow("Adres serwera:", self.host)
         form.addRow("Port:", self.port)
         form.addRow("Użytkownik:", self.user)
         form.addRow("Hasło:", self.password)
+        form.addRow(self.save_box)
+        form.addRow("Nazwa zapisu:", self.save_box.name)
+        form.addRow(self.save_box.save_password)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
@@ -86,6 +126,9 @@ class SftpConnectDialog(QDialog):
         if not self.host.text().strip():
             QMessageBox.warning(self, "SSH", "Podaj adres serwera.")
             return
+        if self.save_box.isChecked() and not self.save_box.name.text().strip():
+            QMessageBox.warning(self, "SSH", "Podaj nazwę zapisanego połączenia.")
+            return
         self.accept()
 
     def params(self) -> dict:
@@ -94,6 +137,9 @@ class SftpConnectDialog(QDialog):
             "port": self.port.value(),
             "user": self.user.text().strip(),
             "password": self.password.text(),
+            "name": self.save_box.name.text().strip() or self.host.text().strip(),
+            "save": self.save_box.isChecked(),
+            "save_password": self.save_box.save_password.isChecked(),
         }
 
 
@@ -107,9 +153,14 @@ class SmbConnectDialog(QDialog):
         self.user = QLineEdit(placeholderText="puste = gość")
         self.password = QLineEdit(echoMode=QLineEdit.EchoMode.Password)
 
+        self.save_box = _SaveConnectionWidget(self)
+
         form.addRow("Adres NAS:", self.host)
         form.addRow("Użytkownik:", self.user)
         form.addRow("Hasło:", self.password)
+        form.addRow(self.save_box)
+        form.addRow("Nazwa zapisu:", self.save_box.name)
+        form.addRow(self.save_box.save_password)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
@@ -124,6 +175,9 @@ class SmbConnectDialog(QDialog):
         if not self.host.text().strip():
             QMessageBox.warning(self, "NAS", "Podaj adres serwera NAS.")
             return
+        if self.save_box.isChecked() and not self.save_box.name.text().strip():
+            QMessageBox.warning(self, "NAS", "Podaj nazwę zapisanego połączenia.")
+            return
         self.accept()
 
     def params(self) -> dict:
@@ -131,6 +185,9 @@ class SmbConnectDialog(QDialog):
             "host": self.host.text().strip(),
             "user": self.user.text().strip(),
             "password": self.password.text(),
+            "name": self.save_box.name.text().strip() or self.host.text().strip(),
+            "save": self.save_box.isChecked(),
+            "save_password": self.save_box.save_password.isChecked(),
         }
 
 

@@ -20,6 +20,44 @@ CATEGORIES = {
                 "application/x-xz", "application/x-bzip2", "application/x-7z"),
 }
 
+# Pseudosystemy plików — nie zajmują realnej pamięci dyskowej (np. /proc/kcore
+# "ma" rozmiar równy RAM i zafałszowuje analizę największych plików).
+_VIRTUAL_FS_TYPES = (
+    "proc", "sysfs", "devtmpfs", "devpts", "tmpfs",
+    "cgroup", "cgroup2", "binfmt_misc", "securityfs",
+    "pstore", "bpf", "mqueue", "hugetlbfs", "configfs",
+    "debugfs", "tracefs", "fusectl", "autofs", "nsfs", "rpc_pipefs",
+)
+
+
+def virtual_mount_points() -> set:
+    """Punkty montowania pseudosystemów plików (np. /proc, /sys, /dev, /run).
+
+    Parsujemy /proc/mounts, żeby nie pomijać np. katalogu użytkownika, który
+    przypadkiem nazywa się "proc", a jednocześnie wycinać wszystkie wirtualne
+    montowania.
+    """
+    mounts: set[str] = set()
+    try:
+        with open("/proc/mounts", encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3 and parts[2] in _VIRTUAL_FS_TYPES:
+                    mounts.add(parts[1].rstrip("/") or "/")
+    except OSError:
+        pass
+    return mounts
+
+
+def is_virtual_mount(path: str, mounts: Optional[set] = None) -> bool:
+    """Czy ścieżka wskazuje dokładnie na wirtualny punkt montowania?"""
+    if mounts is None:
+        mounts = virtual_mount_points()
+    if not mounts:
+        return False
+    real = os.path.realpath(path).rstrip("/") or "/"
+    return real in mounts
+
 
 def categorize(path: Path) -> str:
     mime = mimetypes.guess_type(path.name)[0] or ""
@@ -50,11 +88,20 @@ class StorageAnalyzer(QThread):
         total = 0
         scanned = 0
 
+        mounts = virtual_mount_points()
+        # Jeśli analizujemy sam pseudosystem (np. /proc) — nie ma czego skanować.
+        if is_virtual_mount(str(self._root), mounts):
+            self.finished_scan.emit({}, [], 0)
+            return
+
         for dirpath, dirnames, filenames in os.walk(self._root):
             if self._cancelled:
                 break
-            # pomijamy katalogi systemowe/ukryte na starcie
-            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            # pomijamy katalogi ukryte oraz pseudosystemy plików (/proc, /sys,
+            # /dev, /run…), żeby np. /proc/kcore nie fałszował analizy
+            dirnames[:] = [d for d in dirnames
+                           if not d.startswith(".")
+                           and not is_virtual_mount(os.path.join(dirpath, d), mounts)]
             for fname in filenames:
                 if self._cancelled:
                     break
