@@ -2,21 +2,29 @@
 
 from __future__ import annotations
 
+import json
 import threading
+from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget, QListWidgetItem,
-    QMainWindow, QMenu, QMessageBox, QProgressDialog, QSplitter, QToolBar,
-    QVBoxLayout, QWidget,
+    QApplication, QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
+    QListWidgetItem, QMainWindow, QMenu, QMessageBox, QProgressDialog,
+    QSplitter, QToolBar, QVBoxLayout, QWidget,
 )
 
 from core import archives
 from core.cloud.dropbox import connect_dropbox
 from core.cloud.gdrive import connect_gdrive
 from core.cloud.onedrive import connect_onedrive
+from core.connections import (
+    get_all_connections,
+    provider_params,
+    remove_connection,
+    save_connection,
+)
 from core.fs_base import FileInfo, FileSystemError, FileSystemProvider
 from core.ftp_fs import FtpFileSystem
 from core.ftp_server import LocalFtpServer
@@ -28,7 +36,7 @@ from core.storage_analysis import human_size
 from ui.dialogs import (
     FtpConnectDialog, FtpServerDialog, SftpConnectDialog, SmbConnectDialog,
 )
-from ui.file_list import FileListModel, FileListView
+from ui.file_list import FILE_MIME, FileListModel, FileListView
 
 
 class _DirLoader(QThread):
@@ -66,6 +74,50 @@ class _CloudConnector(QThread):
             self.failed.emit(f"Nieoczekiwany błąd: {exc}")
 
 
+class _PlacesList(QListWidget):
+    """Panel boczny akceptujący przeciąganie plików (kopiowanie myszką)."""
+
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.setAcceptDrops(True)
+        self.drop_handler = None  # callback(paths, row) -> bool (zaakceptowano?)
+
+    @staticmethod
+    def _paths(event) -> List[str]:
+        mime = event.mimeData()
+        if not mime.hasFormat(FILE_MIME):
+            return []
+        try:
+            return json.loads(bytes(mime.data(FILE_MIME)).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return []
+
+    def _row_at(self, pos) -> Optional[int]:
+        item = self.itemAt(pos)
+        return self.row(item) if item is not None else None
+
+    def dragEnterEvent(self, event) -> None:
+        if self._paths(event) and self._row_at(event.position().toPoint()) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        if self._paths(event) and self._row_at(event.position().toPoint()) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:
+        paths = self._paths(event)
+        row = self._row_at(event.position().toPoint())
+        if paths and row is not None and self.drop_handler is not None:
+            if self.drop_handler(paths, row):
+                event.acceptProposedAction()
+                return
+        event.ignore()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -85,13 +137,17 @@ class MainWindow(QMainWindow):
         self.ftp_server = LocalFtpServer()
 
         # ----- sidebar źródeł -----
-        self.places = QListWidget(maximumWidth=220)
+        self.places = _PlacesList(maximumWidth=220)
         self.places.currentRowChanged.connect(self._on_place_changed)
+        self.places.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.places.customContextMenuRequested.connect(self._places_context_menu)
+        self.places.drop_handler = self._on_sidebar_drop
         self._rebuild_places()
 
         # ----- lista plików -----
         self.file_list = FileListView()
         self.file_list.on_double_click(self._open_item)
+        self.file_list.set_drop_handler(self._on_drop_items)
         self.file_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self._context_menu)
 
@@ -131,17 +187,29 @@ class MainWindow(QMainWindow):
             QListWidgetItem(label, self.places)
             self._places_map.append((label, action))
 
+        def sep(label: str) -> None:
+            self.places.addItem(label)
+            self._places_map.append((label, None))
+
         add("🖥  Pamięć lokalna", lambda: LocalFileSystem())
         add("📁  Katalog domowy", "home")
         add("📊  Analiza pamięci", "analyze")
-        self.places.addItem("── Sieć ──")
-        self._places_map.append(("sep", None))
+        sep("── Sieć ──")
         add("➕  Połącz FTP…", "ftp")
         add("➕  Połącz SSH (SFTP)…", "sftp")
         add("➕  Połącz NAS (SMB)…", "smb")
         add("📡  Udostępnij przez FTP…", "ftp_server")
-        self.places.addItem("── Chmury ──")
-        self._places_map.append(("sep", None))
+
+        # Zapisane połączenia — jedno kliknięcie i wybór z pamięci
+        saved = get_all_connections()
+        if saved:
+            sep("── Zapisane połączenia ──")
+            for kind, params in saved:
+                icon = {"ftp": "🔌", "sftp": "🔑", "smb": "🗄"}.get(kind, "🔌")
+                add(f"{icon}  {params.get('name', params['host'])}",
+                    ("saved", kind, params))
+
+        sep("── Chmury ──")
         add("☁  Google Drive…", "gdrive")
         add("☁  Dropbox…", "dropbox")
         add("☁  OneDrive…", "onedrive")
@@ -156,8 +224,11 @@ class MainWindow(QMainWindow):
             return
         if callable(action):
             self._switch_provider(action())
+        elif isinstance(action, tuple) and action[0] == "saved":
+            _, kind, params = action
+            self._connect_saved(kind, params)
         elif action == "home":
-            self._switch_provider(LocalFileSystem(), "/home")
+            self._switch_provider(LocalFileSystem(), str(Path.home()))
         elif action == "analyze":
             self._show_storage_analysis()
         elif action == "ftp":
@@ -177,6 +248,35 @@ class MainWindow(QMainWindow):
         elif action == "cloud_keys":
             self._show_cloud_keys()
 
+    def _places_context_menu(self, pos) -> None:
+        """Menu prawego przycisku na panelu bocznym (usuwanie zapisanych)."""
+        item = self.places.itemAt(pos)
+        if item is None:
+            return
+        row = self.places.row(item)
+        if row < 0 or row >= len(self._places_map):
+            return
+        action = self._places_map[row][1]
+        if not (isinstance(action, tuple) and action[0] == "saved"):
+            return
+        _, kind, params = action
+        name = params.get("name", params["host"])
+        menu = QMenu(self)
+        menu.addAction("🔌  Nawiąż połączenie",
+                       lambda: self._connect_saved(kind, params))
+        menu.addSeparator()
+        menu.addAction("🗑  Usuń z pamięci", lambda: self._forget_connection(kind, name))
+        menu.exec(self.places.viewport().mapToGlobal(pos))
+
+    def _forget_connection(self, kind: str, name: str) -> None:
+        if QMessageBox.question(
+                self, "Zapisane połączenia",
+                f"Usunąć połączenie „{name}” z pamięci?"
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        remove_connection(kind, name)
+        self._rebuild_places()
+
     # ==================================================
     # Połączenia sieciowe
     # ==================================================
@@ -184,32 +284,64 @@ class MainWindow(QMainWindow):
         dlg = FtpConnectDialog(self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        params = dlg.params()
         try:
-            fs = FtpFileSystem(**dlg.params())
+            fs = FtpFileSystem(**provider_params("ftp", params))
         except FileSystemError as exc:
             QMessageBox.critical(self, "FTP", str(exc))
             return
+        self._maybe_save_connection("ftp", params)
         self._switch_provider(fs, "/")
 
     def _connect_sftp(self) -> None:
         dlg = SftpConnectDialog(self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        params = dlg.params()
         try:
-            fs = SftpFileSystem(**dlg.params())
+            fs = SftpFileSystem(**provider_params("sftp", params))
         except FileSystemError as exc:
             QMessageBox.critical(self, "SSH", str(exc))
             return
+        self._maybe_save_connection("sftp", params)
         self._switch_provider(fs, "/")
 
     def _connect_smb(self) -> None:
         dlg = SmbConnectDialog(self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        params = dlg.params()
         try:
-            fs = SmbFileSystem(**dlg.params())
+            fs = SmbFileSystem(**provider_params("smb", params))
         except FileSystemError as exc:
             QMessageBox.critical(self, "NAS", str(exc))
+            return
+        self._maybe_save_connection("smb", params)
+        self._switch_provider(fs, "/")
+
+    def _maybe_save_connection(self, kind: str, params: dict) -> None:
+        """Zapamiętuje połączenie, jeśli użytkownik zaznaczył opcję zapisu."""
+        if not params.get("save"):
+            return
+        store = {k: v for k, v in params.items()
+                 if k not in ("save", "save_password")}
+        if not params.get("save_password"):
+            store.pop("password", None)
+        save_connection(kind, store)
+        self._rebuild_places()
+        self.status_label.setText(
+            f"Połączenie „{store.get('name', '')}” zapisane — wybierzesz je z listy.")
+
+    def _connect_saved(self, kind: str, params: dict) -> None:
+        """Łączy z zapisanym połączeniem (panel boczny)."""
+        classes = {"ftp": FtpFileSystem, "sftp": SftpFileSystem, "smb": SmbFileSystem}
+        cls = classes.get(kind)
+        if cls is None:
+            return
+        try:
+            fs = cls(**provider_params(kind, params))
+        except FileSystemError as exc:
+            QMessageBox.critical(self, "Połączenie", str(exc))
             return
         self._switch_provider(fs, "/")
 
@@ -339,7 +471,7 @@ class MainWindow(QMainWindow):
 
     def _go_home(self) -> None:
         if isinstance(self.provider, LocalFileSystem):
-            self._navigate_to(str(__import__("pathlib").Path.home()))
+            self._navigate_to(str(Path.home()))
         else:
             self._navigate_to("/")
 
@@ -444,6 +576,79 @@ class MainWindow(QMainWindow):
             op.finished_all.connect(self._clear_clipboard)
         self._run_operation(op)
 
+    # ----- przeciąganie i upuszczanie (kopiowanie myszką) -----
+    def _drop_copy(self, items, dst: FileSystemProvider, dst_dir: str,
+                   cut: bool) -> None:
+        cls = MoveOperation if cut else CopyOperation
+        op = cls(items, dst, dst_dir, self)
+        if cut:
+            op.finished_all.connect(self._clear_clipboard)
+        self._run_operation(op)
+
+    @staticmethod
+    def _drop_items(src: FileSystemProvider, paths: List[str],
+                    target_dir: str) -> List[tuple[FileSystemProvider, str]]:
+        """Pozycje do skopiowania/przeniesienia (bez samokopii w tym samym katalogu)."""
+        target = target_dir.rstrip("/") or "/"
+        items = []
+        for p in paths:
+            parent = src.parent(p) or "/"
+            if p == target or parent.rstrip("/") == target:
+                continue  # nie kopiuj pliku "na siebie"
+            items.append((src, p))
+        return items
+
+    def _on_drop_items(self, paths: List[str], target_dir: Optional[str]) -> None:
+        """Upuszczenie na listę plików — kopiuje do wskazanego katalogu."""
+        if not paths:
+            return
+        target = target_dir or self.current_path
+        items = self._drop_items(self.provider, paths, target)
+        if not items:
+            return
+        cut = bool(QApplication.keyboardModifiers()
+                   & Qt.KeyboardModifier.ShiftModifier)
+        self._drop_copy(items, self.provider, target, cut=cut)
+
+    def _drop_target(self, row: int) -> Optional[tuple[FileSystemProvider, str]]:
+        """Cel upuszczenia w panelu bocznym: (provider, katalog) albo None."""
+        if row < 0 or row >= len(self._places_map):
+            return None
+        action = self._places_map[row][1]
+        if callable(action):
+            return action(), "/"  # Pamięć lokalna
+        if action == "home":
+            return LocalFileSystem(), str(Path.home())
+        if isinstance(action, tuple) and action[0] == "saved":
+            _, kind, params = action
+            classes = {"ftp": FtpFileSystem,
+                       "sftp": SftpFileSystem,
+                       "smb": SmbFileSystem}
+            cls = classes.get(kind)
+            if cls is None:
+                return None
+            try:
+                return cls(**provider_params(kind, params)), "/"
+            except FileSystemError:
+                return None
+        return None
+
+    def _on_sidebar_drop(self, paths: List[str], row: int) -> bool:
+        """Upuszczenie na panel boczny — kopiuje do wybranego celu."""
+        if not paths:
+            return False
+        target = self._drop_target(row)
+        if target is None:
+            return False
+        dst, dst_dir = target
+        items = self._drop_items(self.provider, paths, dst_dir)
+        if not items:
+            return False
+        cut = bool(QApplication.keyboardModifiers()
+                   & Qt.KeyboardModifier.ShiftModifier)
+        self._drop_copy(items, dst, dst_dir, cut=cut)
+        return True
+
     def _clear_clipboard(self, *args) -> None:
         self._clipboard = []
         self._clipboard_cut = False
@@ -546,6 +751,12 @@ class MainWindow(QMainWindow):
         act("⌂ Start", self._go_home, "Ctrl+Home")
         tb.addSeparator()
         act("⟳ Odśwież", self._refresh, "F5")
+        tb.addSeparator()
+        # Kopiowanie myszką — przyciski widoczne zawsze (skróty z menu)
+        act("📋  Kopiuj", lambda: self._copy_selected(cut=False))
+        act("✂  Wytnij", lambda: self._copy_selected(cut=True))
+        act("📥  Wklej", self._paste)
+        act("🗑  Usuń", self._delete_selected)
 
     def _build_menus(self) -> None:
         menu = self.menuBar().addMenu("&Plik")
