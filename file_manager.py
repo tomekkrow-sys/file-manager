@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-File Manager — punkt wejścia.
+"""File Manager — punkt wejścia.
 
 Menedżer plików inspirowany File Manager Plus (Android): lokalne pliki,
 FTP (klient + serwer), NAS/SMB, chmury (Google Drive / Dropbox / OneDrive),
@@ -22,14 +21,20 @@ logging.basicConfig(
 )
 
 
+VERSION = "1.3.1"
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("File Manager")
     app.setOrganizationName("FileManager")
+    app.setApplicationVersion(VERSION)
     window = MainWindow()
+    window.setWindowTitle(f"File Manager v{VERSION}")
     window.show()
     return app.exec()
 
 
 if __name__ == "__main__":
+    print(f"File Manager v{VERSION}")
     sys.exit(main())

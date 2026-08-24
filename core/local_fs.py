@@ -109,22 +109,40 @@ class LocalFileSystem(FileSystemProvider):
         src_info = src.stat(src_path)
 
         if src_info.is_dir:
+            # Nie pozwól skopiować katalogu do samego siebie / do własnego
+            # podkatalogu — to pętliłoby się w nieskończoność.
+            self._ensure_distinct(src_path, dst_native)
             dst_native.mkdir(parents=True, exist_ok=True)
             for child in src.list_dir(src_path):
                 self.copy(src, child.path, str(dst_native / child.name), progress)
             return
 
-        # Szybka ścieżka: lokalne -> lokalne
-        if isinstance(src, LocalFileSystem):
+        try:
+            # Szybka ścieżka: lokalne -> lokalne
+            if isinstance(src, LocalFileSystem):
+                dst_native.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, dst_native)
+                if progress:
+                    progress(src_info.size, src_info.size, src_path)
+                return
             dst_native.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_path, dst_native)
-            if progress:
-                progress(src_info.size, src_info.size, src_path)
-            return
+            copy_stream(src, src_path, self, dst_path, progress,
+                        total=src_info.size)
+        except OSError as exc:
+            raise FileSystemError(
+                f"Nie można skopiować: {dst_path} ({exc.strerror or exc})") from exc
 
-        dst_native.parent.mkdir(parents=True, exist_ok=True)
-        copy_stream(src, src_path, self, dst_path, progress,
-                    total=src_info.size)
+    @staticmethod
+    def _ensure_distinct(src_path: str, dst: Path) -> None:
+        """Zabrania kopiowania katalogu na siebie / w swój podkatalog."""
+        src = Path(src_path)
+        try:
+            s, d = src.resolve(), dst.resolve()
+        except OSError:
+            return
+        if s == d or s in d.parents:
+            raise FileSystemError(
+                f"Nie można skopiować katalogu do samego siebie: {src_path}")
 
     def move(self, dst: FileSystemProvider, src_path: str,
              dst_path: str, progress: Optional[ProgressCallback] = None) -> None:

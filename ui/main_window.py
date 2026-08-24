@@ -194,6 +194,7 @@ class MainWindow(QMainWindow):
         add("🖥  Pamięć lokalna", lambda: LocalFileSystem())
         add("📁  Katalog domowy", "home")
         add("📊  Analiza pamięci", "analyze")
+        add("🎵  Zbiory mediów", "collections")
         sep("── Sieć ──")
         add("➕  Połącz FTP…", "ftp")
         add("➕  Połącz SSH (SFTP)…", "sftp")
@@ -231,6 +232,8 @@ class MainWindow(QMainWindow):
             self._switch_provider(LocalFileSystem(), str(Path.home()))
         elif action == "analyze":
             self._show_storage_analysis()
+        elif action == "collections":
+            self._show_media_collections()
         elif action == "ftp":
             self._connect_ftp()
         elif action == "sftp":
@@ -729,6 +732,11 @@ class MainWindow(QMainWindow):
         from ui.storage_view import StorageAnalysisDialog
         StorageAnalysisDialog(self.current_path, self).exec()
 
+    # ----- zbiory mediów -----
+    def _show_media_collections(self) -> None:
+        from ui.media_collections_dialog import MediaCollectionsDialog
+        MediaCollectionsDialog(self).exec()
+
     # ==================================================
     # Pasek narzędzi i menu
     # ==================================================
@@ -780,6 +788,7 @@ class MainWindow(QMainWindow):
         add("Wypakuj archiwum…", self._extract_selected)
         menu.addSeparator()
         add("Analiza pamięci…", self._show_storage_analysis)
+        add("Zbiory mediów…", self._show_media_collections)
         menu.addSeparator()
         add("Klucze API chmur…", self._show_cloud_keys)
         menu.addSeparator()

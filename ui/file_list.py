@@ -58,6 +58,9 @@ class FileListModel(QAbstractTableModel):
         # Ścieżki w schowku (podświetlane) + tryb (False=kopiuj, True=wytnij)
         self._clipboard_paths: set[str] = set()
         self._clipboard_cut = False
+        # Podświetlenie wyników operacji (co/ile właśnie skopiowano do tego katalogu)
+        self._flash_paths: set[str] = set()
+        self._flash_cut = False
 
     def set_clipboard_highlight(self, paths: set[str], cut: bool) -> None:
         """Oznacza graficznie pozycje znajdujące się w schowku."""
@@ -69,11 +72,32 @@ class FileListModel(QAbstractTableModel):
                 self.index(len(self._items) - 1, len(COLS) - 1),
                 [Qt.ItemDataRole.BackgroundRole])
 
+    def set_transfer_highlight(self, paths: set[str], cut: bool) -> None:
+        """Podświetla pozycje, które właśnie tu skopiowano/przeniesiono."""
+        self._flash_paths = set(paths)
+        self._flash_cut = cut
+        if self._items:
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(len(self._items) - 1, len(COLS) - 1),
+                [Qt.ItemDataRole.BackgroundRole])
+
+    def clear_transfer_highlight(self) -> None:
+        if not self._flash_paths:
+            return
+        self._flash_paths = set()
+        if self._items:
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(len(self._items) - 1, len(COLS) - 1),
+                [Qt.ItemDataRole.BackgroundRole])
+
     def set_content(self, provider: FileSystemProvider, items: List[FileInfo]) -> None:
         self.beginResetModel()
         self._provider = provider
         self._items = items
         self._thumbs.clear()
+        self._flash_paths = set()
         self.endResetModel()
 
     def item_at(self, row: int) -> Optional[FileInfo]:
@@ -145,6 +169,10 @@ class FileListModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.BackgroundRole:
             if info.path in self._clipboard_paths:
                 color = (CLIPBOARD_CUT_COLOR if self._clipboard_cut
+                         else CLIPBOARD_COPY_COLOR)
+                return QBrush(color)
+            if info.path in self._flash_paths:
+                color = (CLIPBOARD_CUT_COLOR if self._flash_cut
                          else CLIPBOARD_COPY_COLOR)
                 return QBrush(color)
 

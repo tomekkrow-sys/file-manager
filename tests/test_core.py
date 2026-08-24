@@ -78,6 +78,42 @@ def test_move(fs, tmp_path):
     assert not (tmp_path / "foto.jpg").exists()
 
 
+def test_copy_self_raises_clean_error(fs, tmp_path):
+    """Kopiowanie na siebie ma dać FileSystemError, a nie zawiesić wątek."""
+    f = tmp_path / "docs" / "raport.txt"
+    with pytest.raises(FileSystemError, match="skopiować"):
+        fs.copy(fs, str(f), str(f))
+
+
+def test_copy_dir_into_own_subtree_raises(fs, tmp_path):
+    """Katalog nie może być skopiowany w swój podkatalog (nieskończona pętla)."""
+    with pytest.raises(FileSystemError, match="do samego siebie"):
+        fs.copy(fs, str(tmp_path / "docs"), str(tmp_path / "docs" / "pod"))
+
+
+def test_copy_operation_reports_errors_and_finishes(fs, tmp_path):
+    """Nieudana pozycja kończy operację finished_all z błędem (zamiast wieszać UI)."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance() or QApplication([])
+    from core.operations import CopyOperation
+
+    f = tmp_path / "docs" / "raport.txt"
+    op = CopyOperation([(fs, str(f)), (fs, str(f))], fs, str(tmp_path / "docs"),
+                        None)
+    result = []
+    # DirectConnection — slot wykonuje się w wątku roboczym, wynik gotowy po wait()
+    op.finished_all.connect(
+        lambda ok, err: result.append((ok, err)),
+        Qt.ConnectionType.DirectConnection)
+    op.start()
+    assert op.wait(5000)
+    assert op.isFinished()
+    assert result == [(0, 2)]  # obie pozycje zgłoszone jako błędy, bez wiszącego wątku
+
+
 def test_parent(fs):
     assert fs.parent("/a/b/c") == "/a/b"
     assert fs.parent("/a") == "/"
@@ -209,7 +245,196 @@ def test_oauth_cancel_event(tmp_path, monkeypatch):
                               cancel_event=cancel)
 
 
+# ---------- Zbiory mediów ----------
+
+def test_media_browse_session_navigation():
+    from core.media_collections import MediaBrowseSession
+
+    paths = ["/a/1.jpg", "/a/2.jpg", "/a/3.jpg"]
+    s = MediaBrowseSession(paths, "/a/2.jpg")
+    assert s.current() == "/a/2.jpg"
+    assert s.next() == "/a/3.jpg"
+    assert s.next() is None          # koniec listy
+    assert s.prev() == "/a/2.jpg"
+    assert s.prev() == "/a/1.jpg"
+    assert s.prev() is None          # początek listy
+    assert s.first() == "/a/1.jpg"
+    assert len(s) == 3
+
+    # startowa ścieżka poza listą -> indeks 0
+    s2 = MediaBrowseSession(paths, "/brak/pliku.jpg")
+    assert s2.current() == "/a/1.jpg"
+
+
+def test_image_viewer_close_goes_to_previous(tmp_path):
+    """X na przeglądarce zdjęć wraca do poprzedniego; na pierwszym zamyka."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QImage
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance() or QApplication([])
+
+    from core.local_fs import LocalFileSystem
+    from core.media_collections import MediaBrowseSession
+    from ui.viewers.image_viewer import ImageViewerDialog
+
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"f{i}.png"
+        im = QImage(10, 10, QImage.Format.Format_RGB32)
+        im.fill(0xFFFFFF)
+        im.save(str(p))
+        imgs.append(str(p))
+
+    s = MediaBrowseSession(imgs, imgs[1])
+    dlg = ImageViewerDialog(LocalFileSystem(), imgs[1], browse=s)
+    dlg.show()
+    dlg.close()                       # X -> powrót do poprzedniego
+    assert dlg.windowTitle() == "f0.png"
+    assert not dlg.isHidden()
+    dlg.close()                       # na pierwszym X zamyka
+    assert dlg.isHidden()
+
+
+def test_media_collector_groups_by_collection(tmp_path, monkeypatch):
+    """Pliki trafiają do właściwych zbiorów; inne i ukryte są pomijane."""
+    from core import media_collections
+    from core.media_collections import MediaCollector
+
+    (tmp_path / "muzyka").mkdir()
+    (tmp_path / "muzyka" / "utwor.mp3").write_bytes(b"\x00" * 5)
+    (tmp_path / "film.mp4").write_bytes(b"\x00" * 10)
+    (tmp_path / "zdjecia").mkdir()
+    (tmp_path / "zdjecia" / "foto.png").write_bytes(b"\x00" * 7)
+    (tmp_path / "raport.txt").write_text("x")
+    (tmp_path / "dane.bin").write_bytes(b"\x00" * 3)      # "Inne" — pominięte
+    (tmp_path / ".ukryty.mp3").write_bytes(b"\x00" * 2)   # ukryty — pominięty
+
+    monkeypatch.setattr(media_collections, "virtual_mount_points", lambda: set())
+    collector = MediaCollector([str(tmp_path)])
+    batches = {}
+    collector.disk_finished.connect(batches.update)
+    collector.run()
+
+    def names(collection):
+        return {n for n, s, p in batches.get(collection, [])}
+
+    assert names("Muzyka") == {"utwor.mp3"}
+    assert names("Wideo") == {"film.mp4"}
+    assert names("Zdjęcia") == {"foto.png"}
+    assert names("Dokumenty") == {"raport.txt"}
+
+    all_names = {n for entries in batches.values() for n, s, p in entries}
+    assert "dane.bin" not in all_names
+    assert ".ukryty.mp3" not in all_names
+    # rozmiary zapamiętane
+    muzyka = next(entries for entries in batches["Muzyka"])
+    assert muzyka[1] == 5
+
+
+def test_media_collector_skips_nonregular_and_dedup(tmp_path, monkeypatch):
+    """Pliki niebędące zwykłymi plikami są pomijane, powtórki usuwane."""
+    import os
+    from core import media_collections
+    from core.media_collections import MediaCollector
+
+    (tmp_path / "a.mp3").write_bytes(b"\x00" * 4)
+    os.symlink(tmp_path / "a.mp3", tmp_path / "link.mp3")
+
+    monkeypatch.setattr(media_collections, "virtual_mount_points", lambda: set())
+    # ten sam katalog podany dwa razy — plik liczony raz
+    collector = MediaCollector([str(tmp_path), str(tmp_path)])
+    batches = {}
+    collector.disk_finished.connect(batches.update)
+    collector.run()
+
+    muzyka = batches.get("Muzyka", [])
+    assert {n for n, s, p in muzyka} == {"a.mp3"}
+
+
 # ---------- Analiza pamięci: pomijanie pseudosystemów (/proc/kcore) ----------
+
+def test_list_disks_filters_virtual_and_ssh(tmp_path, monkeypatch):
+    """Lista dysków: pseudosystemy pominięte, SSH tylko po włączeniu opcji."""
+    from core import storage_analysis
+    from core.storage_analysis import list_disks
+
+    mounts_file = tmp_path / "mounts"
+    mounts_file.write_text(
+        "/dev/sda1 / ext4 rw 0 0\n"
+        "proc /proc proc rw 0 0\n"
+        "tmpfs /dev/shm tmpfs rw 0 0\n"
+        "user@10.0.0.5:/home/user /mnt/ssh fuse.sshfs rw 0 0\n"
+        "/dev/sda2 /home ext4 rw 0 0\n")
+
+    class FakeStatvfs:
+        def __init__(self, total, free):
+            self.f_frsize = 1
+            self.f_blocks = total
+            self.f_bavail = free
+
+    monkeypatch.setattr(
+        storage_analysis, "_statvfs",
+        lambda path: FakeStatvfs(1000, 250) if path == "/"
+        else FakeStatvfs(400, 100))
+
+    disks = list_disks(mounts_file=str(mounts_file))
+    # /proc i /dev/shm (wirtualne) oraz sshfs pominięte
+    assert [d.mountpoint for d in disks] == ["/", "/home"]
+    root = next(d for d in disks if d.mountpoint == "/")
+    assert (root.total, root.used, root.free) == (1000, 750, 250)
+
+    disks_ssh = list_disks(include_ssh=True, mounts_file=str(mounts_file))
+    ssh = next(d for d in disks_ssh if d.mountpoint == "/mnt/ssh")
+    assert ssh.fstype == "fuse.sshfs"
+    assert (ssh.total, ssh.used, ssh.free) == (400, 300, 100)
+
+
+def test_disk_directory_scanner_top_level(tmp_path, monkeypatch):
+    """Skaner liczy tylko katalogi top-level (bez ukrytych i plików)."""
+    from core import storage_analysis
+    from core.storage_analysis import DiskDirectoryScanner
+
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "a.txt").write_text("aaaa")
+    (tmp_path / "media").mkdir()
+    (tmp_path / "media" / "b.bin").write_bytes(b"\x00" * 10)
+    hidden = tmp_path / ".cache"
+    hidden.mkdir()
+    (hidden / "x").write_text("x")
+    (tmp_path / "plik.txt").write_text("zzz")  # plik na poziomie 0 — pomijany
+
+    monkeypatch.setattr(storage_analysis, "virtual_mount_points", lambda: set())
+    scanner = DiskDirectoryScanner(str(tmp_path))
+    dirs = {}
+    scanner.dir_size.connect(lambda n, s: dirs.__setitem__(n, s))
+    scanner.run()
+    assert dirs == {"docs": 4, "media": 10}
+
+
+def test_disk_directory_scanner_skips_other_mount(tmp_path, monkeypatch):
+    """Katalog będący osobnym dyskiem jest zgłaszany, ale nie skanowany."""
+    from core import storage_analysis
+    from core.storage_analysis import DiskDirectoryScanner
+
+    other = tmp_path / "inne_dysk"
+    other.mkdir()
+    (other / "big").write_bytes(b"\x00" * 999)
+    own = tmp_path / "wlasne"
+    own.mkdir()
+    (own / "f").write_text("x")
+
+    monkeypatch.setattr(storage_analysis, "virtual_mount_points", lambda: set())
+    scanner = DiskDirectoryScanner(str(tmp_path),
+                                   skip_mountpoints={str(other)})
+    dirs = {}
+    skipped = []
+    scanner.dir_size.connect(lambda n, s: dirs.__setitem__(n, s))
+    scanner.skipped_mount.connect(skipped.append)
+    scanner.run()
+    assert dirs == {"wlasne": 1}
+    assert skipped == ["inne_dysk"]
+
 
 def test_is_virtual_mount():
     from core.storage_analysis import is_virtual_mount
@@ -340,3 +565,69 @@ def test_connect_dialogs_smoke():
     assert dlg.params()["save"] is False  # domyślnie bez zapisywania
     dlg.save_box.setChecked(True)
     assert dlg.params()["save"] is True
+
+
+# ---------- Dwupanelowa wersja (smoke test UI) ----------
+
+def test_transfer_highlight_in_model(tmp_path):
+    """Podświetlenie wyników kopiowania/przenoszenia działa w modelu listy."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance() or QApplication([])
+
+    from core.local_fs import LocalFileSystem
+    from ui.file_list import (CLIPBOARD_COPY_COLOR, CLIPBOARD_CUT_COLOR,
+                              FileListModel)
+
+    fs = LocalFileSystem()
+    (tmp_path / "a.txt").write_text("x")
+    model = FileListModel()
+    model.set_content(fs, list(fs.list_dir(str(tmp_path))))
+
+    row = next(r for r in range(model.rowCount())
+               if model.item_at(r).name == "a.txt")
+    path = model.item_at(row).path
+
+    model.set_transfer_highlight({path}, cut=False)
+    brush = model.index(row, 0).data(Qt.ItemDataRole.BackgroundRole)
+    assert brush is not None and brush.color() == CLIPBOARD_COPY_COLOR
+
+    model.set_transfer_highlight({path}, cut=True)
+    brush = model.index(row, 0).data(Qt.ItemDataRole.BackgroundRole)
+    assert brush is not None and brush.color() == CLIPBOARD_CUT_COLOR
+
+    model.clear_transfer_highlight()
+    assert model.index(row, 0).data(Qt.ItemDataRole.BackgroundRole) is None
+
+def test_dual_panel_window_smoke(tmp_path):
+    """Dwupanelowe okno buduje się, ładuje oba panele i przełącza aktywny."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+
+    from ui.two_panel_window import DualPanelWindow
+
+    win = DualPanelWindow()
+
+    assert win.left.current_path == "/"
+    assert win.right.current_path == str(Path.home())
+    assert win._active is win.left
+
+    # aktywacja po kliknięciu/zmianie zaznaczenia w prawym panelu
+    win._set_active(win.right)
+    assert win._active is win.right
+    assert win._other() is win.left
+
+    # przełączenie Tab-em przenosi aktywność na drugi panel
+    # (focus wymaga pokazanego okna — tu testujemy sam przełącznik)
+    win._switch_active()
+    assert win._active is win.left
+
+    # nawigacja do istniejącego katalogu
+    win.right.navigate(str(tmp_path))
+    assert win.right.current_path == str(tmp_path)
+
+    win.close()

@@ -1,11 +1,14 @@
-#!/usr/bin/env bash
-# Uruchamia File Manager (tworzy venv przy pierwszym uruchomieniu).
-set -e
-cd "$(dirname "$0")"
+#!/usr/bin/env python3
+"""Wrapper runner dla File Managera."""
+import sys
+from pathlib import Path
 
-if [ ! -d .venv ]; then
-    python3 -m venv .venv
-    .venv/bin/pip install -r requirements.txt
-fi
+# dodaj core i ui do ścieżki
+sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "core"))
+sys.path.insert(0, str(Path(__file__).parent / "ui"))
 
-exec .venv/bin/python file_manager.py "$@"
+from file_manager import main
+
+if __name__ == "__main__":
+    sys.exit(main())

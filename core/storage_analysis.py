@@ -5,6 +5,7 @@ from __future__ import annotations
 import mimetypes
 import os
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -49,14 +50,160 @@ def virtual_mount_points() -> set:
     return mounts
 
 
+def _real(path: str) -> str:
+    """Rzeczywista ścieżka bez końcowego ukośnika ('/' pozostaje '/').
+    """
+    return os.path.realpath(path).rstrip("/") or "/"
+
+
 def is_virtual_mount(path: str, mounts: Optional[set] = None) -> bool:
     """Czy ścieżka wskazuje dokładnie na wirtualny punkt montowania?"""
     if mounts is None:
         mounts = virtual_mount_points()
     if not mounts:
         return False
-    real = os.path.realpath(path).rstrip("/") or "/"
-    return real in mounts
+    return _real(path) in mounts
+
+
+@dataclass
+class DiskInfo:
+    device: str        # np. /dev/nvme0n1p2 lub user@host:/path (sshfs)
+    mountpoint: str    # np. /, /home, /mnt/dane
+    fstype: str        # np. ext4, btrfs, fuse.sshfs
+    total: int         # bajty
+    used: int          # bajty
+    free: int          # wolne bajty (dla zwykłego użytkownika)
+
+
+def _parse_mounts(mounts_file: str = "/proc/mounts") -> list:
+    """(device, mountpoint, fstype) z /proc/mounts — osobno do testów."""
+    records: list = []
+    try:
+        with open(mounts_file, encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3:
+                    records.append((parts[0], parts[1], parts[2]))
+    except OSError:
+        pass
+    return records
+
+
+_statvfs = os.statvfs  # osobno do testów
+
+
+def _is_sshfs(device: str, fstype: str) -> bool:
+    """Czy to montowanie sshfs (zewnętrzny dysk widziany przez SSH)?"""
+    return fstype.startswith("fuse.sshfs") or (
+        fstype == "fuse" and "@" in device and ":" in device)
+
+
+def list_disks(include_ssh: bool = False,
+               mounts_file: str = "/proc/mounts") -> list[DiskInfo]:
+    """Fizyczne dyski systemu, każdy osobno.
+
+    Domyślnie tylko urządzenia blokowe na dysku (/dev/*). Z ``include_ssh``
+    dołączane są również montowania sshfs. Każdy punkt montowania liczony jest
+    raz; pseudosystemy (proc, sysfs, tmpfs…) są pomijane.
+    """
+    disks: list[DiskInfo] = []
+    seen: set[str] = set()
+    for device, mountpoint, fstype in _parse_mounts(mounts_file):
+        if fstype in _VIRTUAL_FS_TYPES:
+            continue
+        if _is_sshfs(device, fstype):
+            if not include_ssh:
+                continue
+        elif not device.startswith("/dev/"):
+            continue  # np. overlay, network — tylko dyski fizyczne / SSH
+        real = _real(mountpoint)
+        if real in seen:
+            continue
+        seen.add(real)
+        try:
+            st = _statvfs(mountpoint)
+        except OSError:
+            continue
+        total = st.f_frsize * st.f_blocks
+        free = st.f_frsize * st.f_bavail
+        disks.append(DiskInfo(device, mountpoint, fstype,
+                              total, total - free, free))
+    disks.sort(key=lambda d: d.mountpoint)
+    return disks
+
+
+class DiskDirectoryScanner(QThread):
+    """Skanuje w tle rozmiary katalogów top-level na wskazanym dysku.
+
+    Nie schodzi do katalogów należących do innych dysków (każdy dysk
+    rozpatrywany osobno) ani do pseudosystemów plików.
+    """
+
+    dir_size = Signal(str, int)     # nazwa katalogu top-level, bajty
+    skipped_mount = Signal(str)     # katalog będący osobnym dyskiem
+    progressed = Signal(int, str)   # przeskanowane pliki, bieżąca ścieżka
+    finished_scan = Signal()
+
+    def __init__(self, mountpoint: str, skip_mountpoints: Optional[set] = None,
+                 parent=None):
+        super().__init__(parent)
+        self._root = Path(mountpoint)
+        self._skip = {_real(p) for p in (skip_mountpoints or ())}
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def run(self) -> None:
+        mounts = virtual_mount_points()
+        root_real = _real(str(self._root))
+        try:
+            entries = sorted(os.scandir(self._root), key=lambda e: e.name)
+        except OSError:
+            self.finished_scan.emit()
+            return
+
+        for entry in entries:
+            if self._cancelled:
+                break
+            if entry.name.startswith(".") or not entry.is_dir():
+                continue
+            real = _real(entry.path)
+            if is_virtual_mount(real, mounts):
+                continue
+            if real in self._skip and real != root_real:
+                self.skipped_mount.emit(entry.name)
+                continue
+            size, files = self._walk(entry.path, mounts)
+            if self._cancelled:
+                break
+            self.dir_size.emit(entry.name, size)
+        self.finished_scan.emit()
+
+    def _walk(self, start: str, mounts: set) -> tuple:
+        total = 0
+        files = 0
+        for dirpath, dirnames, filenames in os.walk(start):
+            if self._cancelled:
+                break
+            dirnames[:] = [
+                d for d in dirnames
+                if not d.startswith(".")
+                and not is_virtual_mount(os.path.join(dirpath, d), mounts)
+                and _real(os.path.join(dirpath, d)) not in self._skip
+            ]
+            for fname in filenames:
+                if self._cancelled:
+                    break
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    total += os.lstat(fpath).st_size
+                except OSError:
+                    continue
+                files += 1
+                if files % 500 == 0:
+                    self.progressed.emit(files, fpath)
+        return total, files
 
 
 def categorize(path: Path) -> str:

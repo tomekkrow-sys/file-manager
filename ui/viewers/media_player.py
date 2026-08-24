@@ -1,6 +1,7 @@
 """
 Wbudowany odtwarzacz audio/wideo (QMediaPlayer).
 Pliki z backendów sieciowych są buforowane do pliku tymczasowego.
+Gdy podano sesję ``browse`` — strzałki ←/→ przełączają utwór/nagranie.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -21,10 +23,11 @@ from core.local_fs import LocalFileSystem
 
 class MediaPlayerDialog(QDialog):
     def __init__(self, provider: FileSystemProvider, path: str,
-                 is_video: bool, parent=None):
+                 is_video: bool, parent=None, browse=None):
         super().__init__(parent)
-        name = path.rsplit("/", 1)[-1]
-        self.setWindowTitle(name)
+        self._provider = provider
+        self._browse = browse
+        self._tmp: Path | None = None
         self.resize(900, 600 if is_video else 220)
 
         self._player = QMediaPlayer(self)
@@ -50,6 +53,13 @@ class MediaPlayerDialog(QDialog):
         btn_stop.clicked.connect(self._player.stop)
 
         bar = QHBoxLayout()
+        if browse is not None:
+            btn_prev = QPushButton("◀ Poprzednie")
+            btn_prev.clicked.connect(self._prev_item)
+            btn_next = QPushButton("Następne ▶")
+            btn_next.clicked.connect(self._next_item)
+            bar.addWidget(btn_prev)
+            bar.addWidget(btn_next)
         bar.addWidget(btn_play)
         bar.addWidget(btn_stop)
         bar.addWidget(self._slider, 1)
@@ -59,15 +69,31 @@ class MediaPlayerDialog(QDialog):
         if self._video:
             layout.addWidget(self._video, 1)
         else:
-            layout.addWidget(QLabel(f"🎵 {name}", alignment=Qt.AlignmentFlag.AlignCenter), 1)
+            self._lbl_media = QLabel(
+                "", alignment=Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(self._lbl_media, 1)
         layout.addLayout(bar)
 
-        # Lokalne: odtwarzaj bezpośrednio; sieciowe: buforuj do /tmp
-        if isinstance(provider, LocalFileSystem):
+        if browse is not None:
+            QShortcut(QKeySequence(Qt.Key.Key_Right), self, self._next_item)
+            QShortcut(QKeySequence(Qt.Key.Key_Left), self, self._prev_item)
+
+        self._set_source(path)
+
+    def _set_source(self, path: str) -> None:
+        self._player.stop()
+        if self._tmp:
+            self._tmp.unlink(missing_ok=True)
+            self._tmp = None
+        name = path.rsplit("/", 1)[-1]
+        self.setWindowTitle(name)
+        if not self._video and hasattr(self, "_lbl_media"):
+            self._lbl_media.setText(f"🎵 {name}")
+
+        if isinstance(self._provider, LocalFileSystem):
             url = QUrl.fromLocalFile(path)
-            self._tmp: Path | None = None
         else:
-            with provider.open_read(path) as f:
+            with self._provider.open_read(path) as f:
                 data = f.read()
             suffix = Path(name).suffix
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
@@ -78,6 +104,18 @@ class MediaPlayerDialog(QDialog):
 
         self._player.setSource(url)
         self._player.play()
+
+    def _next_item(self) -> None:
+        if self._browse:
+            path = self._browse.next()
+            if path:
+                self._set_source(path)
+
+    def _prev_item(self) -> None:
+        if self._browse:
+            path = self._browse.prev()
+            if path:
+                self._set_source(path)
 
     def _toggle(self) -> None:
         if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:

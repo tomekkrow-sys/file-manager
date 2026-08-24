@@ -57,6 +57,9 @@ class CopyOperation(FileOperation):
             except FileSystemError as exc:
                 self.failed.emit(path, str(exc))
                 errors += 1
+            except Exception as exc:  # żaden błąd nie może "zabić" wątku
+                self.failed.emit(path, f"Nieoczekiwany błąd: {exc}")
+                errors += 1
         self.finished_all.emit(ok, errors)
 
 
@@ -82,6 +85,9 @@ class MoveOperation(FileOperation):
             except FileSystemError as exc:
                 self.failed.emit(path, str(exc))
                 errors += 1
+            except Exception as exc:  # żaden błąd nie może "zabić" wątku
+                self.failed.emit(path, f"Nieoczekiwany błąd: {exc}")
+                errors += 1
         self.finished_all.emit(ok, errors)
 
 
@@ -101,5 +107,8 @@ class DeleteOperation(FileOperation):
                 ok += 1
             except FileSystemError as exc:
                 self.failed.emit(path, str(exc))
+                errors += 1
+            except Exception as exc:  # żaden błąd nie może "zabić" wątku
+                self.failed.emit(path, f"Nieoczekiwany błąd: {exc}")
                 errors += 1
         self.finished_all.emit(ok, errors)
