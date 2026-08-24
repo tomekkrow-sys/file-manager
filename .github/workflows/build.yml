@@ -1,47 +1,75 @@
-name: Build installers
-
+name: Build Installers
 on:
   push:
-    tags: ["v*"]
-  workflow_dispatch: {}   # mozna uruchomic recznie z zakladki Actions
+    tags: ['v*']
+  workflow_dispatch:
 
 jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Build
+        run: pyinstaller file_manager.spec --noconfirm
+      - name: Package (.deb / tarball)
+        run: |
+          mkdir -p artifacts
+          chmod +x build_deb.sh && ./build_deb.sh || true
+          shopt -s nullglob
+          if ls *.deb >/dev/null 2>&1; then cp *.deb artifacts/; else tar -czf artifacts/file-manager-linux.tar.gz -C dist file-manager; fi
+      - uses: actions/upload-artifact@v4
+        with: { name: file-manager-linux, path: artifacts/* }
+
   build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: pip install -r requirements.txt pyinstaller
-      - name: Build EXE
-        run: python -m PyInstaller --noconfirm --clean file_manager.spec
-      - name: Zip
-        run: Compress-Archive -Path dist\file-manager -DestinationPath file-manager-windows.zip
+        with: { python-version: '3.11' }
+      - name: Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Build
+        run: pyinstaller file_manager.spec --noconfirm
+      - name: Package (.zip)
+        run: |
+          mkdir artifacts
+          Compress-Archive -Path dist/file-manager -DestinationPath artifacts/file-manager-windows.zip
       - uses: actions/upload-artifact@v4
-        with:
-          name: file-manager-windows
-          path: file-manager-windows.zip
+        with: { name: file-manager-windows, path: artifacts/* }
 
-  build-linux-deb:
-    runs-on: ubuntu-latest
+  build-macos:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: System dependencies (Qt offscreen libs)
+        with: { python-version: '3.11' }
+      - name: Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
-      - name: Install dependencies
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Build
+        run: pyinstaller file_manager.spec --noconfirm
+      - name: Package (.zip)
         run: |
-          python -m venv .venv
-          .venv/bin/pip install -r requirements.txt pyinstaller
-      - name: Build DEB
-        run: ./build_deb.sh
+          mkdir -p artifacts
+          zip -r artifacts/file-manager-macos.zip dist/file-manager
       - uses: actions/upload-artifact@v4
-        with:
-          name: file-manager-deb
-          path: file-manager_*_amd64.deb
+        with: { name: file-manager-macos, path: artifacts/* }
+
+  release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: all-artifacts, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with: { files: all-artifacts/* }
