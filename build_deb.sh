@@ -6,6 +6,11 @@ cd "$(dirname "$0")"
 echo "=== File Manager - budowanie pakietu .deb ==="
 
 VERSION=0.1.0
+TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+if [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+    VERSION=${TAG#v}
+fi
+
 PKG=packaging/debian
 DIST=dist/file-manager
 
@@ -27,6 +32,7 @@ cp resources/icons/file_manager.png \
 
 cat > "$PKG/usr/bin/file-manager" << 'EOF'
 #!/bin/bash
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 cd /opt/file-manager && exec ./file-manager "$@"
 EOF
 chmod 755 "$PKG/usr/bin/file-manager"
