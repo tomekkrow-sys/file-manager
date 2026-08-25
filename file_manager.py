@@ -13,11 +13,14 @@ import os
 import subprocess
 import sys
 
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
 from ui.main_window import MainWindow
 from ui.theme_manager import ThemeManager
+
+_ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                    "resources", "icons", "file_manager.png")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +58,9 @@ def main() -> int:
     font = QFont()
     font.setPointSize(12)
     app.setFont(font)
+
+    if os.path.exists(_ICON):
+        app.setWindowIcon(QIcon(_ICON))
 
     ThemeManager.apply_theme(app, "dark")
     window = MainWindow()

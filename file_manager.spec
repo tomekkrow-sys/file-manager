@@ -3,7 +3,8 @@
 import os, glob
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('config/cloud_keys.example.json', 'config')]
+datas = [('config/cloud_keys.example.json', 'config'),
+         ('resources/icons', 'resources/icons')]
 binaries = []
 hiddenimports = []
 

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import threading
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
@@ -33,6 +35,7 @@ from core.operations import CopyOperation, DeleteOperation, MoveOperation
 from core.sftp_fs import SftpFileSystem
 from core.smb_fs import SmbFileSystem
 from core.storage_analysis import human_size
+from core.updater import download, fetch_update, install
 from ui.dialogs import (
     FtpConnectDialog, FtpServerDialog, SftpConnectDialog, SmbConnectDialog,
 )
@@ -72,6 +75,18 @@ class _CloudConnector(QThread):
             self.failed.emit(str(exc))
         except Exception as exc:  # ostatnia linia obrony — nigdy crash UI
             self.failed.emit(f"Nieoczekiwany błąd: {exc}")
+
+
+class _UpdateChecker(QThread):
+    """Sprawdza nową wersję w tle (nie zamraża UI)."""
+    result = Signal(dict)
+
+    def __init__(self, current: str, parent=None):
+        super().__init__(parent)
+        self._current = current
+
+    def run(self) -> None:
+        self.result.emit(fetch_update(self._current))
 
 
 class _PlacesList(QListWidget):
@@ -174,6 +189,9 @@ class MainWindow(QMainWindow):
 
         # start
         self._navigate_to(self.current_path, add_history=True)
+
+        # automatyczne sprawdzenie aktualizacji po uruchomieniu
+        QTimer.singleShot(2000, lambda: self._check_updates(manual=False))
 
     # ==================================================
     # Sidebar źródeł
@@ -793,6 +811,8 @@ class MainWindow(QMainWindow):
         add("Klucze API chmur…", self._show_cloud_keys)
         menu.addSeparator()
         add("Zakończ", self.close, "Ctrl+Q")
+        menu.addSeparator()
+        add("Sprawdź aktualizacje…", self._check_updates, "Ctrl+U")
 
     def _context_menu(self, pos) -> None:
         sel = self._selected()
@@ -833,3 +853,74 @@ class MainWindow(QMainWindow):
             op.cancel()
             op.wait(1000)
         super().closeEvent(event)
+
+    # ==================================================
+    # Aktualizacje (GitHub)
+    # ==================================================
+    def _check_updates(self, manual: bool = True) -> None:
+        """Sprawdź nową wersję na GitHubie (w tle)."""
+        self._update_auto = not manual
+        current = QApplication.instance().applicationVersion()
+        if manual:
+            self._update_progress = QProgressDialog(
+                "Sprawdzanie aktualizacji…", "Anuluj", 0, 0, self)
+            self._update_progress.setWindowModality(Qt.WindowModality.WindowModal)
+            self._update_progress.setMinimumDuration(0)
+            self._update_progress.show()
+        checker = _UpdateChecker(current, self)
+        self._update_checker = checker
+        if manual:
+            checker.finished.connect(self._update_progress.close)
+        checker.result.connect(self._on_update_result)
+        checker.start()
+
+    def _on_update_result(self, info: dict) -> None:
+        status = info.get("status")
+        if status == "update":
+            self._offer_update(info)
+            return
+        if self._update_auto:
+            return  # przy automatycznym sprawdzaniu milczmy, gdy brak nowości
+        if status == "current":
+            QMessageBox.information(
+                self, "Aktualizacja",
+                f"Masz najnowszą wersję ({info.get('version')}).")
+        elif status == "error":
+            QMessageBox.warning(
+                self, "Aktualizacja",
+                f"Nie udało się sprawdzić aktualizacji:\n{info.get('error')}")
+
+    def _offer_update(self, info: dict) -> None:
+        version = info.get("version")
+        asset = info.get("asset")
+        answer = QMessageBox.question(
+            self, "Aktualizacja",
+            f"Dostępna nowsza wersja: {version}.\n"
+            "Pobrać i zainstalować teraz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes or not asset:
+            return
+        name, url = asset
+        dest = os.path.join(tempfile.gettempdir(), name)
+        progress = QProgressDialog(f"Pobieranie {name}…", "Anuluj", 0, 100, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+        try:
+            download(url, dest, lambda done, total: (
+                progress.setMaximum(max(total, 1)),
+                progress.setValue(done)))
+        except Exception as exc:
+            progress.close()
+            QMessageBox.critical(self, "Aktualizacja", f"Błąd pobierania: {exc}")
+            return
+        progress.close()
+        if install(dest):
+            QMessageBox.information(
+                self, "Aktualizacja",
+                "Zainstalowano nową wersję. Uruchom aplikację ponownie.")
+        else:
+            QMessageBox.warning(
+                self, "Aktualizacja",
+                f"Nie udało się zainstalować automatycznie.\n"
+                f"Pobrany plik: {dest}\nZainstaluj go ręcznie.")
