@@ -16,7 +16,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
       - name: Build
-        run: pyinstaller file_manager.spec --noconfirm
+        run: |
+          sed -i "s/^VERSION = \".*\"/VERSION = \"${GITHUB_REF_NAME#v}\"/" file_manager.py
+          pyinstaller file_manager.spec --noconfirm
       - name: Package (.deb / tarball)
         run: |
           mkdir -p artifacts
@@ -37,7 +39,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
       - name: Build
-        run: pyinstaller file_manager.spec --noconfirm
+        run: |
+          sed -i "s/^VERSION = \".*\"/VERSION = \"${GITHUB_REF_NAME#v}\"/" file_manager.py
+          pyinstaller file_manager.spec --noconfirm
       - name: Package (.zip)
         run: |
           mkdir artifacts
@@ -56,7 +60,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
       - name: Build
-        run: pyinstaller file_manager.spec --noconfirm
+        run: |
+          sed -i '' "s/^VERSION = \".*\"/VERSION = \"${GITHUB_REF_NAME#v}\"/" file_manager.py
+          pyinstaller file_manager.spec --noconfirm
       - name: Package (.zip)
         run: |
           mkdir -p artifacts
