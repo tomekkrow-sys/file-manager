@@ -838,7 +838,11 @@ class MainWindow(QMainWindow):
         set_language(code)
         QSettings("FileManager", "FileManager").setValue("language", code)
         QMessageBox.information(
-            self, _("Język"), _("Zmieniono język — uruchom ponownie aplikację."))
+            self, _("Język"), _("Zmieniono język."))
+        # przebuduj okno w nowym języku od razu (bez restartu programu)
+        new_window = MainWindow()
+        new_window.show()
+        self.close()
 
     def _context_menu(self, pos) -> None:
         sel = self._selected()

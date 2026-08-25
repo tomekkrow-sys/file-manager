@@ -111,7 +111,7 @@ _EN: dict[str, str] = {
     "Język": "Language",
     "Polski": "Polish",
     "English": "English",
-    "Zmieniono język — uruchom ponownie aplikację.": "Language changed — restart the application.",
+    "Zmieniono język.": "Language changed.",
     "Otwórz": "Open",
     "Wypakuj…": "Extract…",
     "Odśwież": "Refresh",
