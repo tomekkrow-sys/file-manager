@@ -13,9 +13,11 @@ import os
 import subprocess
 import sys
 
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
 from ui.main_window import MainWindow
+from ui.theme_manager import ThemeManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +51,12 @@ def main() -> int:
     app.setApplicationName("File Manager")
     app.setOrganizationName("FileManager")
     app.setApplicationVersion(VERSION)
+
+    font = QFont()
+    font.setPointSize(12)
+    app.setFont(font)
+
+    ThemeManager.apply_theme(app, "dark")
     window = MainWindow()
     window.setWindowTitle(f"File Manager v{VERSION}")
     window.show()
