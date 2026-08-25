@@ -74,6 +74,7 @@ class ThemeManager:
         QMenuBar::item {{
             padding: 4px 10px;
             border-radius: 4px;
+            color: {colors["text"]};
         }}
         QMenuBar::item:selected {{
             background-color: {colors["accent"]};
@@ -100,10 +101,20 @@ class ThemeManager:
             spacing: 6px;
             padding: 4px;
         }}
-        QToolBar QToolButton {{
+        QToolBar QToolButton, QToolButton {{
+            background-color: transparent;
+            color: {colors["text"]};
+            border: none;
             padding: 7px 12px;
             border-radius: 6px;
             font-size: 13px;
+        }}
+        QToolBar QToolButton:hover, QToolButton:hover {{
+            background-color: {colors["accent"]};
+            color: {colors["accent_text"]};
+        }}
+        QToolBar QToolButton:pressed, QToolButton:pressed {{
+            background-color: {colors["secondary"]};
         }}
         QPushButton {{
             background-color: {colors["accent"]};
