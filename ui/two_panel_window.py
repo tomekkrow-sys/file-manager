@@ -9,12 +9,39 @@ import threading
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from PySide6.QtCore import QEvent, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QEvent, Qt, QThread, QTimer, Signal, QSettings
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QHBoxLayout, QInputDialog, QLabel, QMainWindow,
-    QMenu, QMessageBox, QProgressDialog, QSplitter, QToolBar, QToolButton,
-    QVBoxLayout, QWidget,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMenu,
+    QMenuBar,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QSplitter,
+    QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QToolBar,
+    QToolButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+    QWizard,
+    QWizardPage,
 )
 
 from core import archives
@@ -1009,6 +1036,8 @@ class DualPanelWindow(QMainWindow):
         m_file.addSeparator()
         menu_action(m_file, "Klucze API chmur…", self._show_cloud_keys)
         m_file.addSeparator()
+        menu_action(m_file, "Tryb jednopanelowy", self._open_single_mode)
+        m_file.addSeparator()
         menu_action(m_file, "Zakończ", self.close, "Ctrl+Q")
 
         # dodatkowe akcje sync/batch w menu
@@ -1019,6 +1048,15 @@ class DualPanelWindow(QMainWindow):
         m_file.addAction(A["batch_rename"])
         m_file.addAction(A["batch_convert"])
         m_file.addAction(A["batch_tags"])
+
+    def _open_single_mode(self) -> None:
+        from ui.main_window import MainWindow
+        from ui.window_registry import keep_window
+        QSettings("FileManager", "FileManager").setValue("ui/mode", "single")
+        w = MainWindow()
+        keep_window(w)  # zapobiega usunięciu przez GC
+        w.show()
+        self.close()
 
     def _context_menu(self, panel: Panel, pos) -> None:
         self._set_active(panel)

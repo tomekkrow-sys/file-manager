@@ -67,7 +67,13 @@ def main() -> int:
         app.setWindowIcon(QIcon(_ICON))
 
     ThemeManager.apply_theme(app, "dark")
-    window = MainWindow()
+
+    mode = str(QSettings("FileManager", "FileManager").value("ui/mode", "single"))
+    if mode == "dual":
+        from ui.two_panel_window import DualPanelWindow
+        window = DualPanelWindow()
+    else:
+        window = MainWindow()
     window.setWindowTitle(f"File Manager v{VERSION}")
     window.show()
     return app.exec()

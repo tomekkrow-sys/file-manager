@@ -108,6 +108,8 @@ _EN: dict[str, str] = {
     "Klucze API chmur…": "Cloud API keys…",
     "Zakończ": "Quit",
     "Sprawdź aktualizacje…": "Check for updates…",
+    "Tryb dwupanelowy": "Dual-panel mode",
+    "Tryb jednopanelowy": "Single-panel mode",
     "Język": "Language",
     "Polski": "Polish",
     "English": "English",

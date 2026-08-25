@@ -829,6 +829,8 @@ class MainWindow(QMainWindow):
         add("Zakończ", self.close, "Ctrl+Q")
         menu.addSeparator()
         add("Sprawdź aktualizacje…", self._check_updates, "Ctrl+U")
+        menu.addSeparator()
+        add("Tryb dwupanelowy", self._open_dual_mode)
 
         lang_menu = menu.addMenu(_(u"Język"))
         lang_menu.addAction(_(u"Polski"), lambda: self._set_language("pl"))
@@ -842,6 +844,15 @@ class MainWindow(QMainWindow):
         # przebuduj okno w nowym języku od razu (bez restartu programu)
         new_window = MainWindow()
         new_window.show()
+        self.close()
+
+    def _open_dual_mode(self) -> None:
+        from ui.two_panel_window import DualPanelWindow
+        from ui.window_registry import keep_window
+        QSettings("FileManager", "FileManager").setValue("ui/mode", "dual")
+        w = DualPanelWindow()
+        keep_window(w)  # zapobiega usunięciu przez GC
+        w.show()
         self.close()
 
     def _context_menu(self, pos) -> None:
