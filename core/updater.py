@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -84,21 +85,46 @@ def download(url: str, dest: str, progress_cb=None) -> str:
     return dest
 
 
+def _install_via_terminal(path: str) -> bool:
+    """Otwórz terminal graficzny i uruchom `sudo dpkg -i` (pyta o hasło)."""
+    term = (shutil.which("konsole")
+            or shutil.which("gnome-terminal")
+            or shutil.which("xterm")
+            or shutil.which("mate-terminal")
+            or shutil.which("xfce4-terminal"))
+    if not term:
+        return False
+    script = (
+        f"sudo dpkg -i {shlex.quote(path)}; "
+        f"c=$?; "
+        f"if [ $c -eq 0 ]; then echo 'Zainstalowano pomyślnie.'; "
+        f"else echo \"Błąd instalacji (kod $c).\"; fi; "
+        f"echo; echo 'Naciśnij Enter, aby zamknąć to okno.'; read"
+    )
+    subprocess.run([term, "-e", f"bash -c {shlex.quote(script)}"])
+    return True
+
+
 def install_linux_deb(path: str) -> bool:
     """Zainstaluj .deb, podnosząc uprawnienia najlepszą dostępną metodą.
 
-    Kolejność: pkexec (graficzne hasło) -> xdg-open (menedżer pakietów
-    systemu, sam poprosi o hasło) -> sudo (wymaga terminala).
+    Kolejność: gdebi (hasło przez polkit) -> terminal + sudo (najbardziej
+    niezawodne w sesji graficznej) -> xdg-open (menedżer pakietów) ->
+    sudo bez tty (rzadko zadziała).
     """
-    # 1) pkexec — graficzne podniesienie uprawnień (jeśli jest agent polkit)
-    if shutil.which("pkexec"):
-        if subprocess.run(["pkexec", "dpkg", "-i", path]).returncode == 0:
-            return True
-    # 2) xdg-open — przekazanie pliku do systemowego instalatora (Software/gdebi)
+    # 1) gdebi — instaluje razem z zależnościami, hasło przez polkit
+    for tool in ("gdebi-gtk", "gdebi"):
+        if shutil.which(tool):
+            if subprocess.run([tool, path]).returncode == 0:
+                return True
+    # 2) terminal + sudo — działa wszędzie, gdzie jest terminal i hasło sudo
+    if _install_via_terminal(path):
+        return True
+    # 3) xdg-open — przekazanie pliku do systemowego instalatora
     if shutil.which("xdg-open"):
         subprocess.run(["xdg-open", path])
         return True
-    # 3) sudo — ostateczność (działa tylko z terminala)
+    # 4) sudo bez tty — ostateczność (z GUI zwykle nie zadziała)
     if shutil.which("sudo"):
         return subprocess.run(["sudo", "dpkg", "-i", path]).returncode == 0
     return False

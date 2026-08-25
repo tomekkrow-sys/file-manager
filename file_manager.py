@@ -34,6 +34,18 @@ VERSION = "0.1.0"
 
 
 def _resolve_version() -> str:
+    # 1) jawny plik wersji (bundlowany przez set_version.py / instalator)
+    for cand in (os.path.join(os.getcwd(), "version.txt"),
+                 os.path.join(os.getcwd(), "_internal", "version.txt")):
+        try:
+            if os.path.exists(cand):
+                with open(cand, encoding="utf-8") as fh:
+                    v = fh.read().strip().lstrip("v")
+                    if v:
+                        return v
+        except Exception:
+            pass
+    # 2) git tag (czysty checkout ze źródeł)
     try:
         out = subprocess.run(
             ["git", "describe", "--tags", "--exact-match"],
