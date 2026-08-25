@@ -124,7 +124,8 @@ _EN: dict[str, str] = {
     "Pobieranie {name}…": "Downloading {name}…",
     "Błąd pobierania: {exc}": "Download error: {exc}",
     "Zainstalowano nową wersję. Uruchom aplikację ponownie.": "Installed new version. Restart the application.",
-    "Nie udało się zainstalować automatycznie.\nPobrany plik: {dest}\nZainstaluj go ręcznie.": "Failed to install automatically.\nDownloaded file: {dest}\nInstall it manually.",
+    "Instalacja przekazana do menedżera pakietów systemu.\nUkończ ją, wpisując hasło, a potem uruchom aplikację ponownie.": "Installation handed off to the system package manager.\nFinish it by entering your password, then restart the application.",
+    "Nie udało się zainstalować automatycznie.\nPobrany plik: {dest}\nZainstaluj go ręcznie, np.: sudo dpkg -i {dest}": "Failed to install automatically.\nDownloaded file: {dest}\nInstall it manually, e.g.: sudo dpkg -i {dest}",
     # ---- window ----
     "File Manager": "File Manager",
     # ---- fragments ----

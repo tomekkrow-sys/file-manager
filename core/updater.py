@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import subprocess
 import tempfile
 
@@ -84,11 +85,36 @@ def download(url: str, dest: str, progress_cb=None) -> str:
 
 
 def install_linux_deb(path: str) -> bool:
-    """Zainstaluj .deb wymagając podniesienia uprawnień (pkexec > sudo)."""
-    for tool in ("pkexec", "sudo"):
-        if subprocess.run(["which", tool], capture_output=True).returncode == 0:
-            return subprocess.run([tool, "dpkg", "-i", path]).returncode == 0
+    """Zainstaluj .deb, podnosząc uprawnienia najlepszą dostępną metodą.
+
+    Kolejność: pkexec (graficzne hasło) -> xdg-open (menedżer pakietów
+    systemu, sam poprosi o hasło) -> sudo (wymaga terminala).
+    """
+    # 1) pkexec — graficzne podniesienie uprawnień (jeśli jest agent polkit)
+    if shutil.which("pkexec"):
+        if subprocess.run(["pkexec", "dpkg", "-i", path]).returncode == 0:
+            return True
+    # 2) xdg-open — przekazanie pliku do systemowego instalatora (Software/gdebi)
+    if shutil.which("xdg-open"):
+        subprocess.run(["xdg-open", path])
+        return True
+    # 3) sudo — ostateczność (działa tylko z terminala)
+    if shutil.which("sudo"):
+        return subprocess.run(["sudo", "dpkg", "-i", path]).returncode == 0
     return False
+
+
+def installed_deb_version() -> str:
+    """Zwróć wersję zainstalowanego pakietu `file-manager` (puste = brak)."""
+    try:
+        out = subprocess.run(["dpkg", "-s", "file-manager"],
+                             capture_output=True, text=True)
+        for line in out.stdout.splitlines():
+            if line.startswith("Version:"):
+                return line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
 
 
 def install(path: str) -> bool:
@@ -109,8 +135,10 @@ def fetch_update(current_version: str) -> dict:
         tag, assets = latest_release()
         if is_newer(tag, current_version):
             asset = _platform_asset(assets)
-            return {"status": "update", "version": tag, "asset": asset}
-        return {"status": "current", "version": tag, "asset": None}
+            return {"status": "update", "version": tag, "asset": asset,
+                    "current": current_version}
+        return {"status": "current", "version": tag, "asset": None,
+                "current": current_version}
     except Exception as exc:
         return {"status": "error", "version": None, "asset": None,
-                "error": str(exc)}
+                "error": str(exc), "current": current_version}

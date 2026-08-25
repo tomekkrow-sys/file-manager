@@ -36,7 +36,7 @@ from core.sftp_fs import SftpFileSystem
 from core.smb_fs import SmbFileSystem
 from core.i18n import _, get_language, set_language
 from core.storage_analysis import human_size
-from core.updater import download, fetch_update, install
+from core.updater import download, fetch_update, install, installed_deb_version
 from ui.dialogs import (
     FtpConnectDialog, FtpServerDialog, SftpConnectDialog, SmbConnectDialog,
 )
@@ -907,6 +907,10 @@ class MainWindow(QMainWindow):
     def _on_update_result(self, info: dict) -> None:
         status = info.get("status")
         if status == "update":
+            # Przy auto-sprawdzaniu nie nękaj, gdy wersja to domyślny placeholder
+            # (uruchomienie z kodu bez tagu git -> fałszywa wersja 0.1.0).
+            if self._update_auto and info.get("current") in ("0.1.0", "0.0.0"):
+                return
             self._offer_update(info)
             return
         if self._update_auto:
@@ -949,13 +953,19 @@ class MainWindow(QMainWindow):
                                  _("Błąd pobierania: {exc}").format(exc=exc))
             return
         progress.close()
-        if install(dest):
+        ok = install(dest)
+        if ok and installed_deb_version() == version:
             QMessageBox.information(
                 self, _("Aktualizacja"),
                 _("Zainstalowano nową wersję. Uruchom aplikację ponownie."))
+        elif ok:
+            QMessageBox.information(
+                self, _("Aktualizacja"),
+                _("Instalacja przekazana do menedżera pakietów systemu.\n"
+                  "Ukończ ją, wpisując hasło, a potem uruchom aplikację ponownie."))
         else:
             QMessageBox.warning(
                 self, _("Aktualizacja"),
                 _("Nie udało się zainstalować automatycznie.\n"
-                  "Pobrany plik: {dest}\nZainstaluj go ręcznie.").format(
+                  "Pobrany plik: {dest}\nZainstaluj go ręcznie, np.: sudo dpkg -i {dest}").format(
                     dest=dest))
