@@ -17,7 +17,7 @@ jobs:
           pip install -r requirements.txt pyinstaller
       - name: Build
         run: |
-          sed -i "s/^VERSION = \".*\"/VERSION = \"${GITHUB_REF_NAME#v}\"/" file_manager.py
+          python set_version.py
           pyinstaller file_manager.spec --noconfirm
       - name: Package (.deb / tarball)
         run: |
@@ -40,7 +40,7 @@ jobs:
           pip install -r requirements.txt pyinstaller
       - name: Build
         run: |
-          sed -i "s/^VERSION = \".*\"/VERSION = \"${GITHUB_REF_NAME#v}\"/" file_manager.py
+          python set_version.py
           pyinstaller file_manager.spec --noconfirm
       - name: Package (.zip)
         run: |
@@ -61,7 +61,7 @@ jobs:
           pip install -r requirements.txt pyinstaller
       - name: Build
         run: |
-          sed -i '' "s/^VERSION = \".*\"/VERSION = \"${GITHUB_REF_NAME#v}\"/" file_manager.py
+          python set_version.py
           pyinstaller file_manager.spec --noconfirm
       - name: Package (.zip)
         run: |
