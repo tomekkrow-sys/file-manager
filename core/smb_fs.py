@@ -51,7 +51,7 @@ class SmbFileSystem(FileSystemProvider):
         return f"NAS: {self.host}"
 
     def _unc(self, path: str) -> str:
-        return f"\\\\{self.host}{path.replace('/', '\\')}"
+        return "\\\\" + self.host + path.replace('/', '\\')
 
     def _info(self, path: str, st) -> FileInfo:
         from smbprotocol.file_info import FileAttributes
