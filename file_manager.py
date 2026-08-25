@@ -13,9 +13,11 @@ import os
 import subprocess
 import sys
 
+from PySide6.QtCore import QSettings
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
+from core.i18n import set_language
 from ui.main_window import MainWindow
 from ui.theme_manager import ThemeManager
 
@@ -54,6 +56,8 @@ def main() -> int:
     app.setApplicationName("File Manager")
     app.setOrganizationName("FileManager")
     app.setApplicationVersion(VERSION)
+
+    set_language(str(QSettings("FileManager", "FileManager").value("language", "pl")))
 
     font = QFont()
     font.setPointSize(12)

@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QSettings, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
@@ -34,6 +34,7 @@ from core.local_fs import LocalFileSystem
 from core.operations import CopyOperation, DeleteOperation, MoveOperation
 from core.sftp_fs import SftpFileSystem
 from core.smb_fs import SmbFileSystem
+from core.i18n import _, get_language, set_language
 from core.storage_analysis import human_size
 from core.updater import download, fetch_update, install
 from ui.dialogs import (
@@ -74,7 +75,7 @@ class _CloudConnector(QThread):
         except FileSystemError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:  # ostatnia linia obrony — nigdy crash UI
-            self.failed.emit(f"Nieoczekiwany błąd: {exc}")
+            self.failed.emit(_("Nieoczekiwany błąd: {exc}").format(exc=exc))
 
 
 class _UpdateChecker(QThread):
@@ -136,7 +137,7 @@ class _PlacesList(QListWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("File Manager")
+        self.setWindowTitle(_("File Manager"))
         self.resize(1100, 700)
 
         # ----- stan -----
@@ -202,11 +203,11 @@ class MainWindow(QMainWindow):
         self._places_map: list[tuple[str, object]] = []
 
         def add(label: str, action) -> None:
-            QListWidgetItem(label, self.places)
+            QListWidgetItem(_(label), self.places)
             self._places_map.append((label, action))
 
         def sep(label: str) -> None:
-            self.places.addItem(label)
+            self.places.addItem(_(label))
             self._places_map.append((label, None))
 
         add("🖥  Pamięć lokalna", lambda: LocalFileSystem())
@@ -225,7 +226,8 @@ class MainWindow(QMainWindow):
             sep("── Zapisane połączenia ──")
             for kind, params in saved:
                 icon = {"ftp": "🔌", "sftp": "🔑", "smb": "🗄"}.get(kind, "🔌")
-                add(f"{icon}  {params.get('name', params['host'])}",
+                add(_("{icon}  {name}").format(
+                    icon=icon, name=params.get('name', params['host'])),
                     ("saved", kind, params))
 
         sep("── Chmury ──")
@@ -283,16 +285,16 @@ class MainWindow(QMainWindow):
         _, kind, params = action
         name = params.get("name", params["host"])
         menu = QMenu(self)
-        menu.addAction("🔌  Nawiąż połączenie",
+        menu.addAction(_("🔌  Nawiąż połączenie"),
                        lambda: self._connect_saved(kind, params))
         menu.addSeparator()
-        menu.addAction("🗑  Usuń z pamięci", lambda: self._forget_connection(kind, name))
+        menu.addAction(_("🗑  Usuń z pamięci"), lambda: self._forget_connection(kind, name))
         menu.exec(self.places.viewport().mapToGlobal(pos))
 
     def _forget_connection(self, kind: str, name: str) -> None:
         if QMessageBox.question(
-                self, "Zapisane połączenia",
-                f"Usunąć połączenie „{name}” z pamięci?"
+                self, _("Zapisane połączenia"),
+                _("Usunąć połączenie „{name}” z pamięci?").format(name=name)
         ) != QMessageBox.StandardButton.Yes:
             return
         remove_connection(kind, name)
@@ -309,7 +311,7 @@ class MainWindow(QMainWindow):
         try:
             fs = FtpFileSystem(**provider_params("ftp", params))
         except FileSystemError as exc:
-            QMessageBox.critical(self, "FTP", str(exc))
+            QMessageBox.critical(self, _("FTP"), str(exc))
             return
         self._maybe_save_connection("ftp", params)
         self._switch_provider(fs, "/")
@@ -322,7 +324,7 @@ class MainWindow(QMainWindow):
         try:
             fs = SftpFileSystem(**provider_params("sftp", params))
         except FileSystemError as exc:
-            QMessageBox.critical(self, "SSH", str(exc))
+            QMessageBox.critical(self, _("SSH"), str(exc))
             return
         self._maybe_save_connection("sftp", params)
         self._switch_provider(fs, "/")
@@ -335,7 +337,7 @@ class MainWindow(QMainWindow):
         try:
             fs = SmbFileSystem(**provider_params("smb", params))
         except FileSystemError as exc:
-            QMessageBox.critical(self, "NAS", str(exc))
+            QMessageBox.critical(self, _("NAS"), str(exc))
             return
         self._maybe_save_connection("smb", params)
         self._switch_provider(fs, "/")
@@ -351,7 +353,8 @@ class MainWindow(QMainWindow):
         save_connection(kind, store)
         self._rebuild_places()
         self.status_label.setText(
-            f"Połączenie „{store.get('name', '')}” zapisane — wybierzesz je z listy.")
+            _("Połączenie „{name}” zapisane — wybierzesz je z listy.").format(
+                name=store.get('name', '')))
 
     def _connect_saved(self, kind: str, params: dict) -> None:
         """Łączy z zapisanym połączeniem (panel boczny)."""
@@ -362,7 +365,7 @@ class MainWindow(QMainWindow):
         try:
             fs = cls(**provider_params(kind, params))
         except FileSystemError as exc:
-            QMessageBox.critical(self, "Połączenie", str(exc))
+            QMessageBox.critical(self, _("Połączenie"), str(exc))
             return
         self._switch_provider(fs, "/")
 
@@ -372,18 +375,18 @@ class MainWindow(QMainWindow):
         if provider_key and not has_app_keys(provider_key) \
                 and not get_saved_token(provider_key):
             answer = QMessageBox.question(
-                self, "Chmura",
-                "Najpierw musisz wpisać klucze API tej chmury.\n"
-                "Otworzyć ustawienia kluczy?")
+                self, _("Chmura"),
+                _("Najpierw musisz wpisać klucze API tej chmury.\n"
+                  "Otworzyć ustawienia kluczy?"))
             if answer == QMessageBox.StandardButton.Yes:
                 self._show_cloud_keys()
             return
 
         progress = QProgressDialog(
-            "Otworzono przeglądarkę — zaloguj się do chmury.\n"
-            "Po zalogowaniu wróć tutaj (okno zamknie się samo).",
-            "Anuluj", 0, 0, self)
-        progress.setWindowTitle("Logowanie do chmury")
+            _("Otworzono przeglądarkę — zaloguj się do chmury.\n"
+              "Po zalogowaniu wróć tutaj (okno zamknie się samo)."),
+            _("Anuluj"), 0, 0, self)
+        progress.setWindowTitle(_("Logowanie do chmury"))
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         progress.show()
@@ -401,7 +404,7 @@ class MainWindow(QMainWindow):
             progress.close()
             self._cloud_connector = None
             if "anulowane" not in message:
-                QMessageBox.critical(self, "Chmura", message)
+                QMessageBox.critical(self, _("Chmura"), message)
             self.status_label.setText("")
 
         connector.connected.connect(on_connected)
@@ -416,12 +419,13 @@ class MainWindow(QMainWindow):
     def _manage_ftp_server(self) -> None:
         if self.ftp_server.is_running():
             if QMessageBox.question(
-                    self, "Serwer FTP",
-                    f"Serwer działa (ftp://{self.ftp_server.local_ip()}:"
-                    f"{self.ftp_server.port}). Zatrzymać?"
+                    self, _("Serwer FTP"),
+                    _("Serwer działa (ftp://{ip}:{port}). Zatrzymać?").format(
+                        ip=self.ftp_server.local_ip(),
+                        port=self.ftp_server.port)
             ) == QMessageBox.StandardButton.Yes:
                 self.ftp_server.stop()
-                self.status_label.setText("Serwer FTP zatrzymany.")
+                self.status_label.setText(_("Serwer FTP zatrzymany."))
             return
         dlg = FtpServerDialog(self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -429,13 +433,15 @@ class MainWindow(QMainWindow):
         try:
             ip, port = self.ftp_server.start(**dlg.params())
         except OSError as exc:
-            QMessageBox.critical(self, "Serwer FTP", f"Nie można uruchomić: {exc}")
+            QMessageBox.critical(self, _("Serwer FTP"),
+                                 _("Nie można uruchomić: {exc}").format(exc=exc))
             return
         QMessageBox.information(
-            self, "Serwer FTP",
-            f"Serwer działa!\n\nZ innego urządzenia połącz się z:\n"
-            f"  ftp://{ip}:{port}\n\n"
-            f"Użytkownik i hasło jak w konfiguracji (lub anonimowo, tylko odczyt).")
+            self, _("Serwer FTP"),
+            _("Serwer działa!\n\nZ innego urządzenia połącz się z:\n"
+              "  ftp://{ip}:{port}\n\n"
+              "Użytkownik i hasło jak w konfiguracji (lub anonimowo, tylko odczyt).").format(
+                ip=ip, port=port))
 
     # ==================================================
     # Nawigacja
@@ -454,8 +460,10 @@ class MainWindow(QMainWindow):
             self._history.append(path)
             self._history_idx += 1
         self.current_path = path
-        self.path_label.setText(f"{self.provider.display_name()}  ▸  {path}")
-        self.status_label.setText("Ładowanie…")
+        self.path_label.setText(
+            _("{name}  ▸  {path}").format(
+                name=self.provider.display_name(), path=path))
+        self.status_label.setText(_("Ładowanie…"))
 
         self._loader = _DirLoader(self.provider, path, self)
         self._loader.loaded.connect(self._on_dir_loaded)
@@ -469,11 +477,12 @@ class MainWindow(QMainWindow):
         total = sum(i.size for i in items if not i.is_dir)
         dirs = sum(1 for i in items if i.is_dir)
         self.status_label.setText(
-            f"{len(items) - dirs} plików, {dirs} katalogów — {human_size(total)}")
+            _("{files} plików, {dirs} katalogów — {size}").format(
+                files=len(items) - dirs, dirs=dirs, size=human_size(total)))
 
     def _on_dir_failed(self, message: str) -> None:
         self.status_label.setText("")
-        QMessageBox.warning(self, "Błąd", message)
+        QMessageBox.warning(self, _("Błąd"), message)
 
     def _go_back(self) -> None:
         if self._history_idx > 0:
@@ -522,24 +531,27 @@ class MainWindow(QMainWindow):
             self._show_archive(info)
         else:
             QMessageBox.information(self, info.name,
-                                    f"Brak wbudowanego podglądu dla typu: {mime}")
+                                    _("Brak wbudowanego podglądu dla typu: {mime}").format(
+                                        mime=mime))
 
     def _show_archive(self, info: FileInfo) -> None:
         if not isinstance(self.provider, LocalFileSystem):
             QMessageBox.information(
-                self, "Archiwum",
-                "Podgląd archiwów dostępny dla plików lokalnych.\n"
-                "Skopiuj archiwum na dysk i spróbuj ponownie.")
+                self, _("Archiwum"),
+                _("Podgląd archiwów dostępny dla plików lokalnych.\n"
+                  "Skopiuj archiwum na dysk i spróbuj ponownie."))
             return
         try:
             entries = archives.list_archive(info.path)
         except archives.ArchiveError as exc:
-            QMessageBox.critical(self, "Archiwum", str(exc))
+            QMessageBox.critical(self, _("Archiwum"), str(exc))
             return
         preview = "\n".join(f"{human_size(s):>10}  {n}" for n, s in entries[:200])
         QMessageBox.information(
-            self, f"Zawartość: {info.name}",
-            f"{len(entries)} pozycji.\n\n{preview}" if entries else "Archiwum puste.")
+            self, _("Zawartość: {name}").format(name=info.name),
+            _("Archiwum puste.") if not entries else
+            _("{count} pozycji.\n\n{preview}").format(
+                count=len(entries), preview=preview))
 
     # ==================================================
     # Operacje na plikach
@@ -551,7 +563,7 @@ class MainWindow(QMainWindow):
         self._navigate_to(self.current_path, add_history=False)
 
     def _new_folder(self) -> None:
-        name, ok = QInputDialog.getText(self, "Nowy katalog", "Nazwa:")
+        name, ok = QInputDialog.getText(self, _("Nowy katalog"), _("Nazwa:"))
         if ok and name.strip():
             try:
                 self.provider.mkdir(f"{self.current_path.rstrip('/')}/{name.strip()}")
@@ -564,7 +576,7 @@ class MainWindow(QMainWindow):
         if len(sel) != 1:
             return
         info = sel[0]
-        name, ok = QInputDialog.getText(self, "Zmień nazwę", "Nowa nazwa:",
+        name, ok = QInputDialog.getText(self, _("Zmień nazwę"), _("Nowa nazwa:"),
                                         text=info.name)
         if ok and name.strip() and name.strip() != info.name:
             try:
@@ -582,9 +594,11 @@ class MainWindow(QMainWindow):
         # Graficzne oznaczenie pozycji w schowku
         model: FileListModel = self.file_list.model()
         model.set_clipboard_highlight({p for _, p in self._clipboard}, cut)
+        action = _("wytnij") if cut else _("kopiuj")
         self.status_label.setText(
-            f"Schowek: {len(sel)} pozycji ({'wytnij' if cut else 'kopiuj'}) — "
-            "przejdź do celu i wciśnij Wklej.")
+            _("Schowek: {count} pozycji ({action}) — "
+              "przejdź do celu i wciśnij Wklej.").format(
+                count=len(sel), action=action))
 
     def _paste(self) -> None:
         if not self._clipboard:
@@ -682,17 +696,18 @@ class MainWindow(QMainWindow):
             return
         names = "\n".join(i.name for i in sel[:10])
         if len(sel) > 10:
-            names += f"\n… i {len(sel) - 10} więcej"
+            names += _("\n… i {n} więcej").format(n=len(sel) - 10)
         if QMessageBox.question(
-                self, "Usuń",
-                f"Usunąć trwale {len(sel)} pozycji?\n\n{names}"
+                self, _("Usuń"),
+                _("Usunąć trwale {count} pozycji?\n\n{names}").format(
+                    count=len(sel), names=names)
         ) != QMessageBox.StandardButton.Yes:
             return
         self._run_operation(
             DeleteOperation([(self.provider, i.path) for i in sel], self))
 
     def _run_operation(self, op) -> None:
-        progress = QProgressDialog("Operacja na plikach…", "Anuluj", 0, 100, self)
+        progress = QProgressDialog(_("Operacja na plikach…"), _("Anuluj"), 0, 100, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(300)
         op.progressed.connect(
@@ -706,10 +721,11 @@ class MainWindow(QMainWindow):
             self._operations.remove(op),
             self._refresh(),
             self.status_label.setText(
-                f"Zakończono: {ok} OK, {err} błędów."),
+                _("Zakończono: {ok} OK, {err} błędów.").format(ok=ok, err=err)),
             op.deleteLater()))
         op.failed.connect(lambda path, msg: self.status_label.setText(
-            f"Błąd: {path.rsplit('/', 1)[-1]} — {msg}"))
+            _("Błąd: {path} — {msg}").format(
+                path=path.rsplit('/', 1)[-1], msg=msg)))
         self._operations.append(op)
         op.start()
 
@@ -717,25 +733,25 @@ class MainWindow(QMainWindow):
     def _compress_selected(self) -> None:
         sel = [i for i in self._selected() if isinstance(self.provider, LocalFileSystem)]
         if not sel or not isinstance(self.provider, LocalFileSystem):
-            QMessageBox.information(self, "Kompresja",
-                                    "Kompresja ZIP działa dla plików lokalnych.")
+            QMessageBox.information(self, _("Kompresja"),
+                                    _("Kompresja ZIP działa dla plików lokalnych."))
             return
         default = f"{self.current_path.rstrip('/')}/{sel[0].name}.zip"
-        name, ok = QInputDialog.getText(self, "Kompresja ZIP",
-                                        "Plik wynikowy:", text=default)
+        name, ok = QInputDialog.getText(self, _("Kompresja ZIP"),
+                                        _("Plik wynikowy:"), text=default)
         if not ok or not name.strip():
             return
         try:
             archives.compress_zip([i.path for i in sel], name.strip())
             self._refresh()
         except archives.ArchiveError as exc:
-            QMessageBox.critical(self, "Kompresja", str(exc))
+            QMessageBox.critical(self, _("Kompresja"), str(exc))
 
     def _extract_selected(self) -> None:
         sel = self._selected()
         if len(sel) != 1 or not isinstance(self.provider, LocalFileSystem):
-            QMessageBox.information(self, "Wypakuj",
-                                    "Zaznacz jedno archiwum (plik lokalny).")
+            QMessageBox.information(self, _("Wypakuj"),
+                                    _("Zaznacz jedno archiwum (plik lokalny)."))
             return
         info = sel[0]
         out = f"{self.current_path.rstrip('/')}/{info.name.rsplit('.', 1)[0]}"
@@ -743,7 +759,7 @@ class MainWindow(QMainWindow):
             archives.extract(info.path, out)
             self._refresh()
         except archives.ArchiveError as exc:
-            QMessageBox.critical(self, "Wypakuj", str(exc))
+            QMessageBox.critical(self, _("Wypakuj"), str(exc))
 
     # ----- analiza pamięci -----
     def _show_storage_analysis(self) -> None:
@@ -759,11 +775,11 @@ class MainWindow(QMainWindow):
     # Pasek narzędzi i menu
     # ==================================================
     def _build_toolbar(self) -> None:
-        tb = QToolBar("Nawigacja", movable=False)
+        tb = QToolBar(_("Nawigacja"), movable=False)
         self.addToolBar(tb)
 
         def act(text, slot, shortcut=None):
-            a = QAction(text, self)
+            a = QAction(_(text), self)
             a.triggered.connect(slot)
             if shortcut:
                 a.setShortcut(QKeySequence(shortcut))
@@ -785,10 +801,10 @@ class MainWindow(QMainWindow):
         act("🗑  Usuń", self._delete_selected)
 
     def _build_menus(self) -> None:
-        menu = self.menuBar().addMenu("&Plik")
+        menu = self.menuBar().addMenu(_("&Plik"))
 
         def add(text, slot, shortcut=None):
-            a = QAction(text, self)
+            a = QAction(_(text), self)
             a.triggered.connect(slot)
             if shortcut:
                 a.setShortcut(QKeySequence(shortcut))
@@ -814,26 +830,36 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         add("Sprawdź aktualizacje…", self._check_updates, "Ctrl+U")
 
+        lang_menu = menu.addMenu(_(u"Język"))
+        lang_menu.addAction(_(u"Polski"), lambda: self._set_language("pl"))
+        lang_menu.addAction(_(u"English"), lambda: self._set_language("en"))
+
+    def _set_language(self, code: str) -> None:
+        set_language(code)
+        QSettings("FileManager", "FileManager").setValue("language", code)
+        QMessageBox.information(
+            self, _("Język"), _("Zmieniono język — uruchom ponownie aplikację."))
+
     def _context_menu(self, pos) -> None:
         sel = self._selected()
         menu = QMenu(self)
         if sel:
-            menu.addAction("Otwórz", lambda: self._open_item(sel[0]))
-            menu.addAction("Zmień nazwę", self._rename_selected)
+            menu.addAction(_("Otwórz"), lambda: self._open_item(sel[0]))
+            menu.addAction(_("Zmień nazwę"), self._rename_selected)
             menu.addSeparator()
-            menu.addAction("Kopiuj", lambda: self._copy_selected(cut=False))
-            menu.addAction("Wytnij", lambda: self._copy_selected(cut=True))
-            menu.addAction("Usuń", self._delete_selected)
+            menu.addAction(_("Kopiuj"), lambda: self._copy_selected(cut=False))
+            menu.addAction(_("Wytnij"), lambda: self._copy_selected(cut=True))
+            menu.addAction(_("Usuń"), self._delete_selected)
             menu.addSeparator()
-            menu.addAction("Kompresuj do ZIP…", self._compress_selected)
+            menu.addAction(_("Kompresuj do ZIP…"), self._compress_selected)
             if len(sel) == 1 and archives.is_archive(sel[0].name):
-                menu.addAction("Wypakuj…", self._extract_selected)
+                menu.addAction(_("Wypakuj…"), self._extract_selected)
         else:
-            menu.addAction("Nowy katalog", self._new_folder)
-            menu.addAction("Wklej", self._paste,
+            menu.addAction(_("Nowy katalog"), self._new_folder)
+            menu.addAction(_("Wklej"), self._paste,
                            enabled=bool(self._clipboard))
             menu.addSeparator()
-            menu.addAction("Odśwież", self._refresh)
+            menu.addAction(_("Odśwież"), self._refresh)
         menu.exec(self.file_list.viewport().mapToGlobal(pos))
 
     # ==================================================
@@ -863,7 +889,7 @@ class MainWindow(QMainWindow):
         current = QApplication.instance().applicationVersion()
         if manual:
             self._update_progress = QProgressDialog(
-                "Sprawdzanie aktualizacji…", "Anuluj", 0, 0, self)
+                _("Sprawdzanie aktualizacji…"), _("Anuluj"), 0, 0, self)
             self._update_progress.setWindowModality(Qt.WindowModality.WindowModal)
             self._update_progress.setMinimumDuration(0)
             self._update_progress.show()
@@ -883,26 +909,29 @@ class MainWindow(QMainWindow):
             return  # przy automatycznym sprawdzaniu milczmy, gdy brak nowości
         if status == "current":
             QMessageBox.information(
-                self, "Aktualizacja",
-                f"Masz najnowszą wersję ({info.get('version')}).")
+                self, _("Aktualizacja"),
+                _("Masz najnowszą wersję ({version}).").format(
+                    version=info.get('version')))
         elif status == "error":
             QMessageBox.warning(
-                self, "Aktualizacja",
-                f"Nie udało się sprawdzić aktualizacji:\n{info.get('error')}")
+                self, _("Aktualizacja"),
+                _("Nie udało się sprawdzić aktualizacji:\n{error}").format(
+                    error=info.get('error')))
 
     def _offer_update(self, info: dict) -> None:
         version = info.get("version")
         asset = info.get("asset")
         answer = QMessageBox.question(
-            self, "Aktualizacja",
-            f"Dostępna nowsza wersja: {version}.\n"
-            "Pobrać i zainstalować teraz?",
+            self, _("Aktualizacja"),
+            _("Dostępna nowsza wersja: {version}.\n"
+              "Pobrać i zainstalować teraz?").format(version=version),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes or not asset:
             return
         name, url = asset
         dest = os.path.join(tempfile.gettempdir(), name)
-        progress = QProgressDialog(f"Pobieranie {name}…", "Anuluj", 0, 100, self)
+        progress = QProgressDialog(_("Pobieranie {name}…").format(name=name),
+                                  _("Anuluj"), 0, 100, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         progress.show()
@@ -912,15 +941,17 @@ class MainWindow(QMainWindow):
                 progress.setValue(done)))
         except Exception as exc:
             progress.close()
-            QMessageBox.critical(self, "Aktualizacja", f"Błąd pobierania: {exc}")
+            QMessageBox.critical(self, _("Aktualizacja"),
+                                 _("Błąd pobierania: {exc}").format(exc=exc))
             return
         progress.close()
         if install(dest):
             QMessageBox.information(
-                self, "Aktualizacja",
-                "Zainstalowano nową wersję. Uruchom aplikację ponownie.")
+                self, _("Aktualizacja"),
+                _("Zainstalowano nową wersję. Uruchom aplikację ponownie."))
         else:
             QMessageBox.warning(
-                self, "Aktualizacja",
-                f"Nie udało się zainstalować automatycznie.\n"
-                f"Pobrany plik: {dest}\nZainstaluj go ręcznie.")
+                self, _("Aktualizacja"),
+                _("Nie udało się zainstalować automatycznie.\n"
+                  "Pobrany plik: {dest}\nZainstaluj go ręcznie.").format(
+                    dest=dest))
