@@ -9,6 +9,8 @@ archiwa ZIP/TAR/GZ/XZ, wbudowane podglądy mediów i analiza pamięci.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -22,6 +24,24 @@ logging.basicConfig(
 
 
 VERSION = "0.1.0"
+
+
+def _resolve_version() -> str:
+    try:
+        out = subprocess.run(
+            ["git", "describe", "--tags", "--exact-match"],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip().lstrip("v")
+    except Exception:
+        pass
+    return VERSION
+
+
+VERSION = _resolve_version()
 
 
 def main() -> int:
