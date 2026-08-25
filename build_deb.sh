@@ -32,8 +32,8 @@ cp resources/icons/file_manager.png \
 
 cat > "$PKG/usr/bin/file-manager" << 'EOF'
 #!/bin/bash
-export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
-cd /opt/file-manager && exec ./file-manager "$@"
+cd /opt/file-manager
+exec ./file-manager "$@"
 EOF
 chmod 755 "$PKG/usr/bin/file-manager"
 
