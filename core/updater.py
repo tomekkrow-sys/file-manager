@@ -101,7 +101,12 @@ def _install_via_terminal(path: str) -> bool:
         f"else echo \"Błąd instalacji (kod $c).\"; fi; "
         f"echo; echo 'Naciśnij Enter, aby zamknąć to okno.'; read"
     )
-    subprocess.run([term, "-e", f"bash -c {shlex.quote(script)}"])
+    # Program i argumenty jako osobne elementy listy (nie jeden ciąg z 'bash -c')!
+    if "gnome-terminal" in term:
+        cmd = [term, "--", "bash", "-c", script]
+    else:
+        cmd = [term, "-e", "bash", "-c", script]
+    subprocess.run(cmd)
     return True
 
 
