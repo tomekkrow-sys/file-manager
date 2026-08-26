@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import QSettings, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QProcess, QSettings, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
@@ -855,6 +855,16 @@ class MainWindow(QMainWindow):
         w.show()
         self.close()
 
+    def _restart_application(self) -> None:
+        """Po udanej aktualizacji: uruchom nową instancję i zamknij bieżącą."""
+        app = QApplication.instance()
+        launcher = "/usr/bin/file-manager"
+        if os.path.exists(launcher):
+            QProcess.startDetached(launcher)
+        else:
+            QProcess.startDetached(app.applicationFilePath(), app.arguments()[1:])
+        app.quit()
+
     def _context_menu(self, pos) -> None:
         sel = self._selected()
         menu = QMenu(self)
@@ -966,9 +976,8 @@ class MainWindow(QMainWindow):
         progress.close()
         ok = install(dest)
         if ok and installed_deb_version() == version:
-            QMessageBox.information(
-                self, _("Aktualizacja"),
-                _("Zainstalowano nową wersję. Uruchom aplikację ponownie."))
+            self._restart_application()
+            return
         elif ok:
             QMessageBox.information(
                 self, _("Aktualizacja"),
