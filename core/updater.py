@@ -100,13 +100,46 @@ def download(url: str, dest: str, progress_cb=None) -> str:
     return dest
 
 
+def _install_via_askpass(path: str) -> bool:
+    """Zainstaluj przez `sudo -A` z graficznym oknem hasła (ksshaskpass).
+
+    Nie wymaga terminala — hasło wpisuje się w oknie Qt. Działa w sesji
+    graficznej bez otwartego terminala.
+    """
+    ask = shutil.which("ksshaskpass") or shutil.which("ssh-askpass")
+    if not ask:
+        return False
+    env = dict(os.environ)
+    env["SUDO_ASKPASS"] = ask
+    try:
+        r = subprocess.run(
+            ["sudo", "-A", "dpkg", "-i", path],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0:
+            print("[updater] sudo -A dpkg -i nie powiodło się:", r.stderr.strip())
+        return r.returncode == 0
+    except Exception as exc:
+        print("[updater] _install_via_askpass wyjątek:", exc)
+        return False
+
+
 def _install_via_terminal(path: str) -> bool:
-    """Otwórz terminal graficzny i uruchom `sudo dpkg -i` (pyta o hasło)."""
-    term = (shutil.which("konsole")
-            or shutil.which("gnome-terminal")
-            or shutil.which("xterm")
-            or shutil.which("mate-terminal")
-            or shutil.which("xfce4-terminal"))
+    """Ostatnia deska ratunku: otwórz terminal graficzny i `sudo dpkg -i`."""
+    candidates = [
+        "/usr/bin/konsole", "/usr/bin/gnome-terminal", "/usr/bin/xterm",
+        "/usr/bin/mate-terminal", "/usr/bin/xfce4-terminal",
+    ]
+    term = next((c for c in candidates if os.path.exists(c)), None)
+    if term is None:
+        for name in ("konsole", "gnome-terminal", "xterm"):
+            p = shutil.which(name)
+            if p:
+                term = p
+                break
     if not term:
         return False
     script = (
@@ -116,31 +149,32 @@ def _install_via_terminal(path: str) -> bool:
         f"else echo \"Błąd instalacji (kod $c).\"; fi; "
         f"echo; echo 'Naciśnij Enter, aby zamknąć to okno.'; read"
     )
-    # Program i argumenty jako osobne elementy listy (nie jeden ciąg z 'bash -c')!
-    if "gnome-terminal" in term:
-        cmd = [term, "--", "bash", "-c", script]
-    else:
-        cmd = [term, "-e", "bash", "-c", script]
-    subprocess.run(cmd)
-    return True
+    try:
+        if "gnome-terminal" in term:
+            subprocess.run([term, "--", "bash", "-c", script])
+        else:
+            subprocess.run([term, "-e", "bash", "-c", script])
+        return True
+    except Exception:
+        return False
 
 
 def install_linux_deb(path: str) -> bool:
     """Zainstaluj .deb, podnosząc uprawnienia najlepszą dostępną metodą.
 
-    Kolejność: gdebi (hasło przez polkit) -> terminal + sudo (najbardziej
-    niezawodne w sesji graficznej) -> xdg-open (menedżer pakietów) ->
-    sudo bez tty (rzadko zadziała).
+    Kolejność: gdebi (polkit) -> sudo -A + graficzne hasło (ksshaskpass)
+    -> terminal + sudo (ostateczność) -> xdg-open -> sudo bez tty.
     """
-    # 1) gdebi — instaluje razem z zależnościami, hasło przez polkit
     for tool in ("gdebi-gtk", "gdebi"):
         if shutil.which(tool):
             if subprocess.run([tool, path]).returncode == 0:
                 return True
-    # 2) terminal + sudo — działa wszędzie, gdzie jest terminal i hasło sudo
+    if _install_via_askpass(path):
+        return True
+    # 3) terminal + sudo — ostateczność, gdy brak graficznego hasła
     if _install_via_terminal(path):
         return True
-    # 3) xdg-open — przekazanie pliku do systemowego instalatora
+    # 4) xdg-open — przekazanie pliku do systemowego instalatora
     if shutil.which("xdg-open"):
         subprocess.run(["xdg-open", path])
         return True
