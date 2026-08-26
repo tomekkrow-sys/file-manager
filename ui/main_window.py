@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -856,14 +857,26 @@ class MainWindow(QMainWindow):
         self.close()
 
     def _restart_application(self) -> None:
-        """Po udanej aktualizacji: uruchom nową instancję i zamknij bieżącą."""
+        """Po udanej aktualizacji: zastąp bieżący proces nowym (ten sam PID).
+
+        Używamy os.execv zamiast startDetached+quit, bo nowy proces przy
+        startDetached bywa zabijany przy zamykaniu starego — execv podmienia
+        obraz procesu i jest niezawodne.
+        """
         app = QApplication.instance()
-        launcher = "/usr/bin/file-manager"
-        if os.path.exists(launcher):
-            QProcess.startDetached(launcher)
+        if os.path.exists("/usr/bin/file-manager"):
+            target, args = "/usr/bin/file-manager", ["file-manager"]
         else:
-            QProcess.startDetached(app.applicationFilePath(), app.arguments()[1:])
-        app.quit()
+            target, args = sys.executable, sys.argv
+        try:
+            app.closeAllWindows()
+        except Exception:
+            pass
+        try:
+            os.execv(target, args)
+        except Exception as exc:
+            print("[updater] restart failed:", exc)
+            app.quit()
 
     def _context_menu(self, pos) -> None:
         sel = self._selected()
