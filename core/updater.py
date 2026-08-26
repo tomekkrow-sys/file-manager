@@ -19,6 +19,7 @@ import requests
 
 REPO = "tomekkrow-sys/file-manager"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
+API_RELEASES = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
 
 
 def _parse_version(version: str) -> tuple:
@@ -44,13 +45,27 @@ def is_newer(latest: str, current: str) -> bool:
 
 
 def latest_release() -> tuple:
-    """Zwróć (tag, {nazwa_pliku: url}) dla najnowszego release'u."""
-    resp = requests.get(API_LATEST, timeout=20)
+    """Zwróć (tag, {nazwa_pliku: url}) dla NAJNOWSZEJ wersji (najwyższy semver).
+
+    Pomija drafty i pre-release. Ignorujemy flagę „latest" GitHuba, bo ta
+    zależy od daty publikacji, a nie numeru wersji — co prowadziło do sytuacji,
+    gdy nowsza wersja nie była wykrywalna.
+    """
+    resp = requests.get(API_RELEASES, timeout=20)
     resp.raise_for_status()
-    data = resp.json()
-    tag = (data.get("tag_name") or "").lstrip("vV") or "0.0.0"
-    assets = {a["name"]: a["browser_download_url"] for a in data.get("assets", [])}
-    return tag, assets
+    best_tag = "0.0.0"
+    best_assets: dict = {}
+    for rel in resp.json():
+        if rel.get("draft") or rel.get("prerelease"):
+            continue
+        tag = (rel.get("tag_name") or "").lstrip("vV") or "0.0.0"
+        if _parse_version(tag) > _parse_version(best_tag):
+            best_tag = tag
+            best_assets = {
+                a["name"]: a["browser_download_url"]
+                for a in rel.get("assets", [])
+            }
+    return best_tag, best_assets
 
 
 def _platform_asset(assets: dict) -> tuple:
