@@ -72,7 +72,8 @@ def main() -> int:
     set_language(str(QSettings("FileManager", "FileManager").value("language", "pl")))
 
     font = QFont()
-    font.setPointSize(12)
+    font.setPointSize(14)
+    font.setBold(True)
     app.setFont(font)
 
     if os.path.exists(_ICON):

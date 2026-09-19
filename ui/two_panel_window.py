@@ -143,7 +143,7 @@ class Panel(QWidget):
         self._flash_timer.timeout.connect(self._clear_flash)
 
         self.path_label = QLabel()
-        self.path_label.setStyleSheet("font-weight: bold; padding: 4px;")
+        self.path_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 5px;")
         self.file_list = FileListView()
         self.status_label = QLabel()
 
@@ -171,7 +171,7 @@ class Panel(QWidget):
         color = "#dceafc" if active else "transparent"
         border = "#4a90d9" if active else "transparent"
         self.path_label.setStyleSheet(
-            f"font-weight: bold; padding: 4px;"
+            f"font-size: 16px; font-weight: bold; padding: 5px;"
             f"background: {color}; border: 1px solid {border};")
 
     # ----- nawigacja -----

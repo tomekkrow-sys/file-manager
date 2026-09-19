@@ -170,7 +170,7 @@ class MainWindow(QMainWindow):
 
         # ----- pasek ścieżki + status -----
         self.path_label = QLabel()
-        self.path_label.setStyleSheet("font-weight: bold; padding: 4px;")
+        self.path_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 5px;")
         self.status_label = QLabel()
 
         right = QWidget()

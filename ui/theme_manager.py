@@ -60,21 +60,26 @@ class ThemeManager:
         QMainWindow, QDialog {{
             background-color: {colors["bg"]};
             color: {colors["text"]};
-            font-size: 13px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QWidget {{
-            font-size: 13px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QMenuBar {{
             background-color: {colors["secondary"]};
             color: {colors["text"]};
-            padding: 4px;
-            spacing: 2px;
+            padding: 5px;
+            spacing: 3px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QMenuBar::item {{
-            padding: 4px 10px;
+            padding: 5px 12px;
             border-radius: 4px;
             color: {colors["text"]};
+            font-weight: bold;
         }}
         QMenuBar::item:selected {{
             background-color: {colors["accent"]};
@@ -83,13 +88,16 @@ class ThemeManager:
         QMenu {{
             background-color: {colors["secondary"]};
             color: {colors["text"]};
-            padding: 6px;
+            padding: 7px;
             border: 1px solid {colors["border"]};
             border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QMenu::item {{
-            padding: 6px 24px 6px 12px;
+            padding: 7px 26px 7px 14px;
             border-radius: 5px;
+            font-weight: bold;
         }}
         QMenu::item:selected {{
             background-color: {colors["accent"]};
@@ -99,15 +107,16 @@ class ThemeManager:
             background-color: {colors["secondary"]};
             border-bottom: 1px solid {colors["border"]};
             spacing: 6px;
-            padding: 4px;
+            padding: 5px;
         }}
         QToolBar QToolButton, QToolButton {{
             background-color: transparent;
             color: {colors["text"]};
             border: none;
-            padding: 7px 12px;
+            padding: 8px 14px;
             border-radius: 6px;
-            font-size: 13px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QToolBar QToolButton:hover, QToolButton:hover {{
             background-color: {colors["accent"]};
@@ -120,10 +129,10 @@ class ThemeManager:
             background-color: {colors["accent"]};
             color: {colors["accent_text"]};
             border: none;
-            padding: 8px 16px;
+            padding: 9px 18px;
             border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QPushButton:hover {{
             background-color: {colors["accent_text"]};
@@ -131,7 +140,7 @@ class ThemeManager:
             border: 1px solid {colors["accent"]};
         }}
         QPushButton:pressed {{
-            padding: 9px 15px 7px 17px;
+            padding: 10px 17px 8px 19px;
         }}
         QListView, QTreeView, QTableView, QListWidget {{
             background-color: {colors["bg"]};
@@ -139,16 +148,20 @@ class ThemeManager:
             alternate-background-color: {colors["secondary"]};
             border: 1px solid {colors["border"]};
             border-radius: 8px;
-            padding: 4px;
+            padding: 5px;
             outline: 0;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QListView::item, QListWidget::item {{
-            padding: 9px 12px;
+            padding: 10px 14px;
             border-radius: 5px;
-            min-height: 22px;
+            min-height: 26px;
+            font-weight: bold;
         }}
         QTreeView::item, QTableView::item {{
-            padding: 7px 10px;
+            padding: 8px 12px;
+            font-weight: bold;
         }}
         QListView::item:selected, QTreeView::item:selected,
         QListWidget::item:selected, QTableView::item:selected {{
@@ -163,15 +176,18 @@ class ThemeManager:
             background-color: {colors["secondary"]};
             color: {colors["text"]};
             border-top: 1px solid {colors["border"]};
-            padding: 4px 10px;
+            padding: 5px 12px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QLineEdit, QComboBox, QSpinBox, QTextEdit {{
             background-color: {colors["bg"]};
             color: {colors["text"]};
             border: 1px solid {colors["border"]};
-            padding: 7px 11px;
+            padding: 8px 12px;
             border-radius: 8px;
-            font-size: 13px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
         QTextEdit:focus {{
@@ -183,19 +199,21 @@ class ThemeManager:
             selection-background-color: {colors["accent"]};
             border: 1px solid {colors["border"]};
             border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QScrollBar:vertical, QScrollBar:horizontal {{
             background: {colors["secondary"]};
             border: none;
             border-radius: 6px;
-            width: 13px;
-            height: 13px;
+            width: 14px;
+            height: 14px;
         }}
         QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
             background: {colors["border"]};
             border-radius: 6px;
-            min-height: 28px;
-            min-width: 28px;
+            min-height: 30px;
+            min-width: 30px;
         }}
         QScrollBar::handle:hover {{
             background: {colors["accent"]};
@@ -207,24 +225,26 @@ class ThemeManager:
             background-color: {colors["border"]};
             border-radius: 3px;
         }}
-        QSplitter::handle:horizontal {{ width: 5px; }}
-        QSplitter::handle:vertical {{ height: 5px; }}
+        QSplitter::handle:horizontal {{ width: 6px; }}
+        QSplitter::handle:vertical {{ height: 6px; }}
         QHeaderView::section {{
             background-color: {colors["secondary"]};
             color: {colors["text"]};
             border: none;
             border-right: 1px solid {colors["border"]};
             border-bottom: 1px solid {colors["border"]};
-            padding: 7px 10px;
-            font-weight: 600;
+            padding: 8px 12px;
+            font-size: 14px;
+            font-weight: bold;
         }}
         QToolTip {{
             background-color: {colors["secondary"]};
             color: {colors["text"]};
             border: 1px solid {colors["border"]};
             border-radius: 8px;
-            padding: 7px 11px;
-            font-size: 12px;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: bold;
         }}
         QProgressBar {{
             background-color: {colors["secondary"]};
@@ -236,6 +256,10 @@ class ThemeManager:
         QProgressBar::chunk {{
             background-color: {colors["accent"]};
             border-radius: 6px;
+        }}
+        QLabel {{
+            font-size: 14px;
+            font-weight: bold;
         }}
         """
 

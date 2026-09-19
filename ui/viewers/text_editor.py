@@ -20,7 +20,9 @@ class TextEditorDialog(QDialog):
         self.resize(800, 600)
 
         self._edit = QPlainTextEdit()
-        self._edit.setFont(QFont("Monospace", 11))
+        font = QFont("Monospace", 14)
+        font.setBold(True)
+        self._edit.setFont(font)
 
         btn_save = QPushButton("Zapisz")
         btn_close = QPushButton("Zamknij")
