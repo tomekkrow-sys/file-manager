@@ -11,8 +11,16 @@ class LocaleManager:
     """Menadżer lokalizacji — obsługa wielu języków."""
 
     def __init__(self, locales_dir: Optional[Path] = None):
-        self._locales_dir = locales_dir or Path(__file__).parent / "locales"
-        self._locales_dir.mkdir(parents=True, exist_ok=True)
+        if locales_dir:
+            self._locales_dir = locales_dir
+        else:
+            # Domyślnie: katalog w ~/.config/file-manager/ (zapisywalny)
+            self._locales_dir = Path.home() / ".config" / "file-manager" / "locales"
+        try:
+            self._locales_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Fallback:read-only locales zainstalowane z pakietem
+            self._locales_dir = Path(__file__).parent / "locales"
         self._current_locale = "en"
         self._translations: Dict[str, Dict[str, str]] = {}
         self._load_available_locales()
