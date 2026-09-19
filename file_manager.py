@@ -83,8 +83,14 @@ def main() -> int:
 
     mode = str(QSettings("FileManager", "FileManager").value("ui/mode", "single"))
     if mode == "dual":
-        from ui.two_panel_window import DualPanelWindow
-        window = DualPanelWindow()
+        try:
+            from ui.two_panel_window import DualPanelWindow
+            window = DualPanelWindow()
+        except Exception as exc:
+            logging.warning("Nie udało się uruchomić trybu dwupanelowego: %s — "
+                            "powrót do trybu jednopanelowego.", exc)
+            QSettings("FileManager", "FileManager").setValue("ui/mode", "single")
+            window = MainWindow()
     else:
         window = MainWindow()
     window.setWindowTitle(f"File Manager v{VERSION}")

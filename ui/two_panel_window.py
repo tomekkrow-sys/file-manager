@@ -78,14 +78,9 @@ from ui.shortcuts import ShortcutManager, ActionRegistry
 from ui.dnd import DnDHandler, DropTarget, DropMIMEData
 from ui.cloud_manager import CloudManager, AutoSyncManager
 from ui.ftp_manager import FTPServerManager, FTPConnection
-from ui.plugins import PluginManager, PluginInstaller
+from ui.plugins import PluginManager, PluginInstaller, register_builtin_plugins
 from ui.updater import AutoUpdater
 from ui.i18n import LocaleManager, tr, N_
-from ui.shortcuts import ShortcutManager, ActionRegistry
-from ui.dnd import DnDHandler, DropTarget, DropMIMEData
-from ui.cloud_manager import CloudManager, AutoSyncManager
-from ui.ftp_manager import FTPServerManager, FTPConnection
-from ui.plugins import PluginManager, PluginInstaller, register_builtin_plugins
 
 
 class _DirLoader(QThread):
@@ -833,6 +828,28 @@ class DualPanelWindow(QMainWindow):
         for panel in (self.left, self.right):
             model: FileListModel = panel.file_list.model()
             model.set_clipboard_highlight(set(), False)
+
+    def handle_dropped_files(self, files: List[str]) -> None:
+        """Obsługa plików upuszczonych z systemu (drag & drop z menedżera plików)."""
+        if not files:
+            return
+        # Kopiuj do aktywnego panelu
+        panel = self._active
+        dst = panel.provider
+        dst_dir = panel.current_path
+        from core.local_fs import LocalFileSystem
+        local = LocalFileSystem()
+        items = [(local, f) for f in files if not f.startswith(dst_dir)]
+        if not items:
+            return
+        op = CopyOperation(items, dst, dst_dir, self)
+        op.finished_all.connect(lambda ok, err: self._refresh_active())
+        self._operations.append(op)
+        op.start()
+
+    def _refresh_active(self) -> None:
+        """Odśwież aktywny panel po zakończonej operacji."""
+        self._active.navigate(self._active.current_path, add_history=False)
 
     # ----- przeciąganie między panelami -----
     @staticmethod
