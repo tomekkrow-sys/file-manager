@@ -244,7 +244,6 @@ class FileListView(QTableView):
         self.setAcceptDrops(True)
         self.setDragDropMode(QTableView.DragDropMode.DragDrop)
         self.doubleClicked.connect(self._on_double)
-        self.setWheelTracking(True)
 
         header = self.horizontalHeader()
         # Kolumna "Nazwa" zajmuje całą wolną przestrzeń — długie nazwy
