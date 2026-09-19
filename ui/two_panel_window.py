@@ -1066,6 +1066,14 @@ class DualPanelWindow(QMainWindow):
         m_file.addAction(A["batch_convert"])
         m_file.addAction(A["batch_tags"])
 
+        # Menu Widok → Motyw
+        m_view = self.menuBar().addMenu("&Widok")
+        m_theme = m_view.addMenu("Motyw")
+        for theme_name in ["dark", "light", "midnight", "sunset"]:
+            label = {"dark": "Ciemny", "light": "Jasny",
+                     "midnight": "Medalnoc", "sunset": "Zachód słońca"}.get(theme_name, theme_name)
+            menu_action(m_theme, label, lambda t=theme_name: self._apply_theme(t))
+
     def _open_single_mode(self) -> None:
         from ui.main_window import MainWindow
         from ui.window_registry import keep_window
@@ -1074,6 +1082,11 @@ class DualPanelWindow(QMainWindow):
         keep_window(w)  # zapobiega usunięciu przez GC
         w.show()
         self.close()
+
+    def _apply_theme(self, theme_name: str) -> None:
+        ThemeManager.apply_theme(QApplication.instance(), theme_name)
+        QSettings("FileManager", "FileManager").setValue("ui/theme", theme_name)
+        self.left.status_label.setText(f"Zmieniono motyw na: {theme_name}")
 
     def _context_menu(self, panel: Panel, pos) -> None:
         self._set_active(panel)

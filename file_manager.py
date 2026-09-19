@@ -81,6 +81,10 @@ def main() -> int:
 
     ThemeManager.apply_theme(app, "dark")
 
+    saved_theme = str(QSettings("FileManager", "FileManager").value("ui/theme", "dark"))
+    if saved_theme and saved_theme in ThemeManager.themes:
+        ThemeManager.apply_theme(app, saved_theme)
+
     mode = str(QSettings("FileManager", "FileManager").value("ui/mode", "single"))
     if mode == "dual":
         try:

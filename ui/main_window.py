@@ -42,6 +42,7 @@ from ui.dialogs import (
     FtpConnectDialog, FtpServerDialog, SftpConnectDialog, SmbConnectDialog,
 )
 from ui.file_list import FILE_MIME, FileListModel, FileListView
+from ui.theme_manager import ThemeManager
 
 
 class _DirLoader(QThread):
@@ -837,6 +838,13 @@ class MainWindow(QMainWindow):
         lang_menu.addAction(_(u"Polski"), lambda: self._set_language("pl"))
         lang_menu.addAction(_(u"English"), lambda: self._set_language("en"))
 
+        view_menu = self.menuBar().addMenu(_("&Widok"))
+        theme_menu = view_menu.addMenu(_(u"Motyw"))
+        for theme_name in ["dark", "light", "midnight", "sunset"]:
+            label = {"dark": u"Ciemny", "light": u"Jasny",
+                     "midnight": u"Medalnoc", "sunset": u"Zachód słońca"}.get(theme_name, theme_name)
+            theme_menu.addAction(_(label), lambda t=theme_name: self._apply_theme(t))
+
     def _set_language(self, code: str) -> None:
         set_language(code)
         QSettings("FileManager", "FileManager").setValue("language", code)
@@ -846,6 +854,12 @@ class MainWindow(QMainWindow):
         new_window = MainWindow()
         new_window.show()
         self.close()
+
+    def _apply_theme(self, theme_name: str) -> None:
+        ThemeManager.apply_theme(QApplication.instance(), theme_name)
+        QSettings("FileManager", "FileManager").setValue("ui/theme", theme_name)
+        self.status_label.setText(
+            _("Zmieniono motyw na: {name}").format(name=theme_name))
 
     def _open_dual_mode(self) -> None:
         from ui.two_panel_window import DualPanelWindow

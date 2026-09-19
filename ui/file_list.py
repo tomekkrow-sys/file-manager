@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import json
 from typing import List, Optional
 
@@ -32,6 +33,10 @@ MIME_ICONS = {
     "zip": "package-x-generic",
 }
 
+# ---- Cache ikon MIME (LRU, max 500 wpisów) ----
+_mime_icon_cache: collections.OrderedDict[str, QIcon] = collections.OrderedDict()
+_MIME_CACHE_MAX = 500
+
 
 def _icon_for(info: FileInfo) -> QIcon:
     style_icons = QIcon.fromTheme
@@ -39,22 +44,37 @@ def _icon_for(info: FileInfo) -> QIcon:
         icon = style_icons("folder")
         return icon if not icon.isNull() else style_icons("folder-open")
     mime = info.mime or ""
+    # Sprawdź cache
+    cache_key = mime or info.name.rsplit(".", 1)[-1] if "." in info.name else ""
+    if cache_key in _mime_icon_cache:
+        _mime_icon_cache.move_to_end(cache_key)
+        return _mime_icon_cache[cache_key]
     for key, theme_name in MIME_ICONS.items():
         if mime.startswith(key) or key in mime:
             icon = style_icons(theme_name)
             if not icon.isNull():
+                _mime_icon_cache[cache_key] = icon
+                if len(_mime_icon_cache) > _MIME_CACHE_MAX:
+                    _mime_icon_cache.popitem(last=False)
                 return icon
     icon = style_icons("text-x-generic")
-    return icon if not icon.isNull() else style_icons("application-octet-stream")
+    if icon.isNull():
+        icon = style_icons("application-octet-stream")
+    _mime_icon_cache[cache_key] = icon
+    if len(_mime_icon_cache) > _MIME_CACHE_MAX:
+        _mime_icon_cache.popitem(last=False)
+    return icon
 
 
 class FileListModel(QAbstractTableModel):
+    _THUMB_CACHE_MAX = 300
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._items: List[FileInfo] = []
         self._provider: Optional[FileSystemProvider] = None
         self.show_hidden = False
-        self._thumbs: dict[str, QIcon] = {}
+        self._thumbs: collections.OrderedDict[str, QIcon] = collections.OrderedDict()
         # Ścieżki w schowku (podświetlane) + tryb (False=kopiuj, True=wytnij)
         self._clipboard_paths: set[str] = set()
         self._clipboard_cut = False
@@ -153,7 +173,7 @@ class FileListModel(QAbstractTableModel):
                 return "Katalog" if info.is_dir else info.mime.split("/")[-1]
 
         if role == Qt.ItemDataRole.DecorationRole and col == 0:
-            # Miniaturka dla lokalnych obrazów
+            # Miniaturka dla lokalnych obrazów (LRU cache, max 300)
             if (isinstance(self._provider, LocalFileSystem)
                     and info.mime.startswith("image/") and info.size < 50_000_000):
                 if info.path not in self._thumbs:
@@ -162,6 +182,9 @@ class FileListModel(QAbstractTableModel):
                         pm.scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio,
                                   Qt.TransformationMode.SmoothTransformation)
                         if not pm.isNull() else QPixmap(0, 0))
+                    if len(self._thumbs) > self._THUMB_CACHE_MAX:
+                        self._thumbs.popitem(last=False)
+                self._thumbs.move_to_end(info.path)
                 if not self._thumbs[info.path].isNull():
                     return self._thumbs[info.path]
             return _icon_for(info)
@@ -201,6 +224,10 @@ class FileListModel(QAbstractTableModel):
 
 
 class FileListView(QTableView):
+    _ZOOM_MIN = 16
+    _ZOOM_MAX = 64
+    _ZOOM_STEP = 2
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setModel(FileListModel(self))
@@ -209,13 +236,15 @@ class FileListView(QTableView):
         self.setShowGrid(False)
         self.verticalHeader().setVisible(False)
         self.verticalHeader().setDefaultSectionSize(28)
-        self.setIconSize(QSize(22, 22))
+        self._icon_size = 22
+        self.setIconSize(QSize(self._icon_size, self._icon_size))
         self.setSortingEnabled(True)
         self.setAlternatingRowColors(True)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDragDropMode(QTableView.DragDropMode.DragDrop)
         self.doubleClicked.connect(self._on_double)
+        self.setWheelTracking(True)
 
         header = self.horizontalHeader()
         # Kolumna "Nazwa" zajmuje całą wolną przestrzeń — długie nazwy
@@ -280,6 +309,21 @@ class FileListView(QTableView):
             return
         self._drop_handler(paths, self._drop_target_dir(event.position().toPoint()))
         event.acceptProposedAction()
+
+    # ----- Ctrl+Scroll zoom ikon -----
+    def wheelEvent(self, event) -> None:
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self._icon_size = min(self._ZOOM_MAX, self._icon_size + self._ZOOM_STEP)
+            elif delta < 0:
+                self._icon_size = max(self._ZOOM_MIN, self._icon_size - self._ZOOM_STEP)
+            self.setIconSize(QSize(self._icon_size, self._icon_size))
+            self.verticalHeader().setDefaultSectionSize(self._icon_size + 6)
+            self.viewport().update()
+            event.accept()
+        else:
+            super().wheelEvent(event)
 
     def selected_infos(self) -> List[FileInfo]:
         rows = {i.row() for i in self.selectionModel().selectedRows()}
