@@ -839,53 +839,68 @@ class MainWindow(QMainWindow):
     # ==================================================
     def _build_toolbar(self) -> None:
         tb = QToolBar(_("Nawigacja"), movable=False)
-        tb.setIconSize(QSize(24, 24))
+        tb.setIconSize(QSize(28, 28))
         tb.setStyleSheet("""
             QToolBar {
                 background-color: #1a1a2e;
                 border-bottom: 1px solid #3c3c6e;
-                spacing: 6px;
-                padding: 8px 12px;
+                spacing: 8px;
+                padding: 10px 16px;
             }
             QToolButton {
-                background-color: transparent;
+                background-color: #252545;
                 color: #c0c0d0;
-                border: none;
-                padding: 10px 14px;
-                border-radius: 10px;
-                font-size: 15px;
-                font-weight: 500;
+                border: 1px solid transparent;
+                padding: 10px 18px;
+                border-radius: 12px;
+                font-size: 20px;
+                font-weight: 600;
+                min-width: 40px;
+                min-height: 40px;
             }
             QToolButton:hover {
                 background-color: #2d2d50;
                 color: #8ab4f8;
+                border: 1px solid #3c3c6e;
             }
             QToolButton:pressed {
                 background-color: #3c3c6e;
+                color: #ffffff;
+            }
+            QToolTip {
+                background-color: #222240;
+                color: #e8eaed;
+                border: 1px solid #3c3c6e;
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 14px;
+                font-weight: 500;
             }
         """)
         self.addToolBar(tb)
 
-        def act(text, slot, shortcut=None):
+        def act(text, slot, shortcut=None, tip=""):
             a = QAction(_(text), self)
             a.triggered.connect(slot)
+            if tip:
+                a.setToolTip(_(tip))
             if shortcut:
                 a.setShortcut(QKeySequence(shortcut))
                 self.addAction(a)
             tb.addAction(a)
             return a
 
-        act("◀", self._go_back, "Alt+Left")
-        act("▶", self._go_forward, "Alt+Right")
-        act("⬆", self._go_up, "Alt+Up")
-        act("⌂", self._go_home, "Ctrl+Home")
+        act("◀", self._go_back, "Alt+Left", "Wstecz")
+        act("▶", self._go_forward, "Alt+Right", "Dalej")
+        act("⬆", self._go_up, "Alt+Up", "W górę")
+        act("⌂", self._go_home, "Ctrl+Home", "Katalog domowy")
         tb.addSeparator()
-        act("⟳", self._refresh, "F5")
+        act("⟳", self._refresh, "F5", "Odśwież")
         tb.addSeparator()
-        act("📋", lambda: self._copy_selected(cut=False))
-        act("✂", lambda: self._copy_selected(cut=True))
-        act("📥", self._paste)
-        act("🗑", self._delete_selected)
+        act("📋", lambda: self._copy_selected(cut=False), tip="Kopiuj")
+        act("✂", lambda: self._copy_selected(cut=True), tip="Wytnij")
+        act("📥", self._paste, tip="Wklej")
+        act("🗑", self._delete_selected, tip="Usuń")
 
     def _build_menus(self) -> None:
         menu = self.menuBar().addMenu(_("&Plik"))
