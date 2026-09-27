@@ -980,23 +980,48 @@ class MainWindow(QMainWindow):
     def _context_menu(self, pos) -> None:
         sel = self._selected()
         menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                padding: 8px;
+                font-size: 15px;
+            }
+            QMenu::item {
+                padding: 12px 20px 12px 40px;
+                border-radius: 8px;
+                min-height: 24px;
+                font-size: 15px;
+            }
+            QMenu::item:selected {
+                background-color: #264a7a;
+            }
+        """)
         if sel:
-            menu.addAction(_("Otwórz"), lambda: self._open_item(sel[0]))
-            menu.addAction(_("Zmień nazwę"), self._rename_selected)
+            a = menu.addAction(_("📂  Otwórz"))
+            a.triggered.connect(lambda: self._open_item(sel[0]))
+            a = menu.addAction(_("✏  Zmień nazwę"))
+            a.triggered.connect(self._rename_selected)
             menu.addSeparator()
-            menu.addAction(_("Kopiuj"), lambda: self._copy_selected(cut=False))
-            menu.addAction(_("Wytnij"), lambda: self._copy_selected(cut=True))
-            menu.addAction(_("Usuń"), self._delete_selected)
+            a = menu.addAction(_("📋  Kopiuj"))
+            a.triggered.connect(lambda: self._copy_selected(cut=False))
+            a = menu.addAction(_("✂  Wytnij"))
+            a.triggered.connect(lambda: self._copy_selected(cut=True))
+            a = menu.addAction(_("🗑  Usuń"))
+            a.triggered.connect(self._delete_selected)
             menu.addSeparator()
-            menu.addAction(_("Kompresuj do ZIP…"), self._compress_selected)
+            a = menu.addAction(_("📦  Kompresuj do ZIP…"))
+            a.triggered.connect(self._compress_selected)
             if len(sel) == 1 and archives.is_archive(sel[0].name):
-                menu.addAction(_("Wypakuj…"), self._extract_selected)
+                a = menu.addAction(_("📤  Wypakuj…"))
+                a.triggered.connect(self._extract_selected)
         else:
-            menu.addAction(_("Nowy katalog"), self._new_folder)
-            menu.addAction(_("Wklej"), self._paste,
-                           enabled=bool(self._clipboard))
+            a = menu.addAction(_("📁  Nowy katalog"))
+            a.triggered.connect(self._new_folder)
+            a = menu.addAction(_("📋  Wklej"))
+            a.triggered.connect(self._paste)
+            a.setEnabled(bool(self._clipboard))
             menu.addSeparator()
-            menu.addAction(_("Odśwież"), self._refresh)
+            a = menu.addAction(_("🔄  Odśwież"))
+            a.triggered.connect(self._refresh)
         menu.exec(self.file_list.viewport().mapToGlobal(pos))
 
     # ==================================================

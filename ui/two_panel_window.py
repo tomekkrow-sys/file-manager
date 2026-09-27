@@ -1092,34 +1092,49 @@ class DualPanelWindow(QMainWindow):
         self._set_active(panel)
         sel = panel.selected()
         menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                padding: 8px;
+                font-size: 15px;
+            }
+            QMenu::item {
+                padding: 12px 20px 12px 40px;
+                border-radius: 8px;
+                min-height: 24px;
+                font-size: 15px;
+            }
+            QMenu::item:selected {
+                background-color: #264a7a;
+            }
+        """)
         if sel:
-            menu.addAction("Otwórz", lambda: self._open_item(panel, sel[0]))
-            menu.addAction("Zmień nazwę (F2)", self._rename_selected)
+            menu.addAction("📂  Otwórz", lambda: self._open_item(panel, sel[0]))
+            menu.addAction("✏  Zmień nazwę (F2)", self._rename_selected)
             menu.addSeparator()
-            menu.addAction("Kopiuj do drugiego (F5)", self._copy_to_other)
-            menu.addAction("Przenieś do drugiego (F6)", self._move_to_other)
+            menu.addAction("➡  Kopiuj do drugiego (F5)", self._copy_to_other)
+            menu.addAction("➡  Przenieś do drugiego (F6)", self._move_to_other)
             menu.addSeparator()
-            menu.addAction("Kopiuj (Ctrl+C)", lambda: self._copy_selected(cut=False))
-            menu.addAction("Wytnij (Ctrl+X)", lambda: self._copy_selected(cut=True))
-            menu.addAction("Usuń (F8)", self._delete_selected)
+            menu.addAction("📋  Kopiuj (Ctrl+C)", lambda: self._copy_selected(cut=False))
+            menu.addAction("✂  Wytnij (Ctrl+X)", lambda: self._copy_selected(cut=True))
+            menu.addAction("🗑  Usuń (F8)", self._delete_selected)
             menu.addSeparator()
-            menu.addAction("Kompresuj do ZIP…", self._compress_selected)
+            menu.addAction("📦  Kompresuj do ZIP…", self._compress_selected)
             if len(sel) == 1 and archives.is_archive(sel[0].name):
-                menu.addAction("Wypakuj…", self._extract_selected)
+                menu.addAction("📤  Wypakuj…", self._extract_selected)
         else:
-            menu.addAction("Nowy katalog (F7)", self._new_folder)
-            paste = menu.addAction("Wklej (Ctrl+V)", self._paste)
+            menu.addAction("📁  Nowy katalog (F7)", self._new_folder)
+            paste = menu.addAction("📋  Wklej (Ctrl+V)", self._paste)
             paste.setEnabled(bool(self._clipboard))
             menu.addSeparator()
-            menu.addAction("Odśwież", self._active_refresh)
+            menu.addAction("🔄  Odśwież", self._active_refresh)
             menu.addSeparator()
-            menu.addAction("Sync paths", lambda: self._sync_current_path(panel))
-            menu.addAction("Compare panels", lambda: self._compare_panels(panel))
-            menu.addAction("Merge from other", lambda: self._merge_from_other(panel))
+            menu.addAction("🔀  Sync paths", lambda: self._sync_current_path(panel))
+            menu.addAction("🔍  Compare panels", lambda: self._compare_panels(panel))
+            menu.addAction("📥  Merge from other", lambda: self._merge_from_other(panel))
             menu.addSeparator()
-            menu.addAction("Batch rename", self._batch_rename)
-            menu.addAction("Batch convert", self._batch_convert)
-            menu.addAction("Batch tags", self._batch_tag)
+            menu.addAction("📝  Batch rename", self._batch_rename)
+            menu.addAction("🖼  Batch convert", self._batch_convert)
+            menu.addAction("🏷  Batch tags", self._batch_tag)
         menu.exec(panel.file_list.viewport().mapToGlobal(pos))
 
     # ==================================================
