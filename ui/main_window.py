@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(_("File Manager"))
-        self.resize(1100, 700)
+        self.resize(1200, 780)
 
         # ----- stan -----
         self.provider: FileSystemProvider = LocalFileSystem()
@@ -154,30 +154,40 @@ class MainWindow(QMainWindow):
         self._cloud_connector: Optional[_CloudConnector] = None
         self.ftp_server = LocalFtpServer()
 
-        # ----- sidebar źródeł -----
-        self.places = _PlacesList(maximumWidth=280)
-        self.places.setIconSize(QSize(28, 28))
-        self.places.setStyleSheet(
-            "QListWidget {"
-            "  background-color: #16162b; border: none;"
-            "  padding: 8px; font-size: 15px; font-weight: 500;"
-            "}"
-            "QListWidget::item {"
-            "  padding: 12px 14px; border-radius: 10px;"
-            "  margin: 3px 4px; min-height: 44px;"
-            "}"
-            "QListWidget::item:selected {"
-            "  background-color: #1a3a5c;"
-            "  color: #8ab4f8;"
-            "}"
-            "QListWidget::item:hover {"
-            "  background-color: #2d2d50;"
-            "}"
-            "QListWidget::item:disabled {"
-            "  color: #5f5fa0; font-weight: 400; font-size: 12px;"
-            "  padding: 6px 14px; min-height: 20px;"
-            "}"
-        )
+        # ----- sidebar źródeł (Nautilus style) -----
+        self.places = _PlacesList(maximumWidth=260, minimumWidth=200)
+        self.places.setIconSize(QSize(32, 32))
+        self.places.setStyleSheet("""
+            QListWidget {
+                background-color: #1a1a2e;
+                border: none;
+                padding: 8px 6px;
+                font-size: 15px;
+                font-weight: 500;
+                outline: 0;
+            }
+            QListWidget::item {
+                padding: 10px 14px;
+                border-radius: 12px;
+                margin: 1px 4px;
+                min-height: 42px;
+                color: #c0c0d0;
+            }
+            QListWidget::item:selected {
+                background-color: #264a7a;
+                color: #8ab4f8;
+            }
+            QListWidget::item:hover:!selected {
+                background-color: #252545;
+            }
+            QListWidget::item:disabled {
+                color: #4a4a70;
+                font-weight: 600;
+                font-size: 11px;
+                padding: 14px 14px 4px 14px;
+                min-height: 16px;
+            }
+        """)
         self.places.currentRowChanged.connect(self._on_place_changed)
         self.places.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.places.customContextMenuRequested.connect(self._places_context_menu)
@@ -191,20 +201,34 @@ class MainWindow(QMainWindow):
         self.file_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self._context_menu)
 
-        # ----- pasek ścieżki + status -----
+        # ----- pasek ścieżki (breadcrumb style) -----
         self.path_label = QLabel()
         self.path_label.setStyleSheet(
-            "font-size: 16px; font-weight: 600; padding: 12px 16px;"
-            "color: #e8eaed; background: #222240; border-radius: 10px;"
-            "margin: 4px 8px;")
+            "QLabel {"
+            "  font-size: 16px; font-weight: 600;"
+            "  padding: 14px 20px;"
+            "  color: #e8eaed;"
+            "  background-color: #222240;"
+            "  border-radius: 12px;"
+            "  border: 1px solid #3c3c6e;"
+            "}"
+        )
+        self.path_label.setFixedHeight(52)
+
+        # ----- status bar -----
         self.status_label = QLabel()
         self.status_label.setStyleSheet(
-            "font-size: 12px; padding: 6px 16px; color: #9aa0a6;")
+            "QLabel {"
+            "  font-size: 12px; font-weight: 400;"
+            "  padding: 4px 16px;"
+            "  color: #9aa0a6;"
+            "}"
+        )
 
         right = QWidget()
         rlay = QVBoxLayout(right)
-        rlay.setContentsMargins(8, 8, 8, 8)
-        rlay.setSpacing(4)
+        rlay.setContentsMargins(12, 12, 12, 8)
+        rlay.setSpacing(6)
         rlay.addWidget(self.path_label)
         rlay.addWidget(self.file_list, 1)
         rlay.addWidget(self.status_label)
@@ -212,7 +236,9 @@ class MainWindow(QMainWindow):
         splitter = QSplitter()
         splitter.addWidget(self.places)
         splitter.addWidget(right)
+        splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([260, 940])
         self.setCentralWidget(splitter)
 
         self._build_toolbar()
@@ -237,26 +263,33 @@ class MainWindow(QMainWindow):
             self._places_map.append((label, action))
 
         def sep(label: str) -> None:
-            self.places.addItem(_(label))
+            item = QListWidgetItem(_(label))
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            font = item.font()
+            font.setPointSize(10)
+            font.setBold(True)
+            item.setFont(font)
+            item.setForeground(QColor("#5f5fa0"))
+            self.places.addItem(item)
             self._places_map.append((label, None))
 
-        add("  💻  Pamięć lokalna", lambda: LocalFileSystem())
-        add("  🏠  Katalog domowy", "home")
-        add("  📊  Analiza pamięci", "analyze")
-        add("  🎵  Zbiory mediów", "collections")
-        sep("─────── Sieć ───────")
-        add("  📶  Połącz FTP…", "ftp")
-        add("  🔑  Połącz SSH (SFTP)…", "sftp")
-        add("  🗄  Połącz NAS (SMB)…", "smb")
-        add("  📡  Udostępnij przez FTP…", "ftp_server")
+        add("  💻   Pamięć lokalna", lambda: LocalFileSystem())
+        add("  🏠   Katalog domowy", "home")
+        add("  📊   Analiza pamięci", "analyze")
+        add("  🎵   Zbiory mediów", "collections")
+        sep("SIEĆ")
+        add("  📶   Połącz FTP…", "ftp")
+        add("  🔑   Połącz SSH (SFTP)…", "sftp")
+        add("  🗄   Połącz NAS (SMB)…", "smb")
+        add("  📡   Udostępnij przez FTP…", "ftp_server")
 
-        # Zapisane połączenia — jedno kliknięcie i wybór z pamięci
+        # Zapisane połączenia
         saved = get_all_connections()
         if saved:
-            sep("─────── Zapisane ───────")
+            sep("ZAPISANE POŁĄCZENIA")
             for kind, params in saved:
                 icon = {"ftp": "🔌", "sftp": "🔑", "smb": "🗄"}.get(kind, "🔌")
-                add(_("  {icon}  {name}").format(
+                add(_("  {icon}   {name}").format(
                     icon=icon, name=params.get('name', params['host'])),
                     ("saved", kind, params))
 
@@ -806,6 +839,31 @@ class MainWindow(QMainWindow):
     # ==================================================
     def _build_toolbar(self) -> None:
         tb = QToolBar(_("Nawigacja"), movable=False)
+        tb.setIconSize(QSize(24, 24))
+        tb.setStyleSheet("""
+            QToolBar {
+                background-color: #1a1a2e;
+                border-bottom: 1px solid #3c3c6e;
+                spacing: 6px;
+                padding: 8px 12px;
+            }
+            QToolButton {
+                background-color: transparent;
+                color: #c0c0d0;
+                border: none;
+                padding: 10px 14px;
+                border-radius: 10px;
+                font-size: 15px;
+                font-weight: 500;
+            }
+            QToolButton:hover {
+                background-color: #2d2d50;
+                color: #8ab4f8;
+            }
+            QToolButton:pressed {
+                background-color: #3c3c6e;
+            }
+        """)
         self.addToolBar(tb)
 
         def act(text, slot, shortcut=None):
@@ -817,18 +875,17 @@ class MainWindow(QMainWindow):
             tb.addAction(a)
             return a
 
-        act("◀ Wstecz", self._go_back, "Alt+Left")
-        act("▶ Dalej", self._go_forward, "Alt+Right")
-        act("⬆ W górę", self._go_up, "Alt+Up")
-        act("⌂ Start", self._go_home, "Ctrl+Home")
+        act("◀", self._go_back, "Alt+Left")
+        act("▶", self._go_forward, "Alt+Right")
+        act("⬆", self._go_up, "Alt+Up")
+        act("⌂", self._go_home, "Ctrl+Home")
         tb.addSeparator()
-        act("⟳ Odśwież", self._refresh, "F5")
+        act("⟳", self._refresh, "F5")
         tb.addSeparator()
-        # Kopiowanie myszką — przyciski widoczne zawsze (skróty z menu)
-        act("📋  Kopiuj", lambda: self._copy_selected(cut=False))
-        act("✂  Wytnij", lambda: self._copy_selected(cut=True))
-        act("📥  Wklej", self._paste)
-        act("🗑  Usuń", self._delete_selected)
+        act("📋", lambda: self._copy_selected(cut=False))
+        act("✂", lambda: self._copy_selected(cut=True))
+        act("📥", self._paste)
+        act("🗑", self._delete_selected)
 
     def _build_menus(self) -> None:
         menu = self.menuBar().addMenu(_("&Plik"))
