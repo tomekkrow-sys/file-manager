@@ -155,7 +155,14 @@ class MainWindow(QMainWindow):
         self.ftp_server = LocalFtpServer()
 
         # ----- sidebar źródeł -----
-        self.places = _PlacesList(maximumWidth=220)
+        self.places = _PlacesList(maximumWidth=240)
+        self.places.setStyleSheet(
+            "QListWidget { background-color: #16162b; border: none;"
+            "padding: 8px; font-size: 13px; }"
+            "QListWidget::item { padding: 10px 12px; border-radius: 8px;"
+            "margin: 2px 4px; min-height: 36px; }"
+            "QListWidget::item:selected { background-color: #1a3a5c; }"
+            "QListWidget::item:hover { background-color: #2d2d50; }")
         self.places.currentRowChanged.connect(self._on_place_changed)
         self.places.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.places.customContextMenuRequested.connect(self._places_context_menu)
@@ -171,12 +178,18 @@ class MainWindow(QMainWindow):
 
         # ----- pasek ścieżki + status -----
         self.path_label = QLabel()
-        self.path_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 5px;")
+        self.path_label.setStyleSheet(
+            "font-size: 16px; font-weight: 600; padding: 12px 16px;"
+            "color: #e8eaed; background: #222240; border-radius: 10px;"
+            "margin: 4px 8px;")
         self.status_label = QLabel()
+        self.status_label.setStyleSheet(
+            "font-size: 12px; padding: 6px 16px; color: #9aa0a6;")
 
         right = QWidget()
         rlay = QVBoxLayout(right)
-        rlay.setContentsMargins(0, 0, 0, 0)
+        rlay.setContentsMargins(8, 8, 8, 8)
+        rlay.setSpacing(4)
         rlay.addWidget(self.path_label)
         rlay.addWidget(self.file_list, 1)
         rlay.addWidget(self.status_label)

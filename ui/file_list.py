@@ -1,4 +1,7 @@
-"""Model i widok listy plików (ikony wg typu MIME, miniaturki obrazów lokalnych)."""
+"""Model i widok listy plików — Material Design style.
+
+Duże ikony (40px), czytelne wiersze (56px), podtytuł z rozmiarem/datą.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +9,11 @@ import collections
 import json
 from typing import List, Optional
 
-from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, QSize, Qt
-from PySide6.QtGui import QBrush, QColor, QIcon, QPixmap
-from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QTableView
+from PySide6.QtCore import (QAbstractTableModel, QModelIndex, QSize, Qt,
+                             QTimer, QThreadPool, QRunnable, Signal, QObject)
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import (QApplication, QStyle, QStyledItemDelegate,
+                                QTableView, QHeaderView)
 
 from core.fs_base import FileInfo, FileSystemProvider
 from core.local_fs import LocalFileSystem
@@ -19,36 +24,60 @@ COLS = ["Nazwa", "Rozmiar", "Zmodyfikowano", "Typ"]
 # Typ MIME przenoszonych pozycji (kopiowanie/przenoszenie myszką)
 FILE_MIME = "application/x-file-manager-paths"
 
-# Podświetlenie pozycji będących w schowku
-CLIPBOARD_COPY_COLOR = QColor("#cfe8ff")   # niebieskawy — kopiuj
-CLIPBOARD_CUT_COLOR = QColor("#ffe0b2")    # pomarańczowy — wytnij (przenieś)
+# Kolory podświetlenia schowka
+CLIPBOARD_COPY_COLOR = QColor("#d3e3fd")   # niebieski
+CLIPBOARD_CUT_COLOR = QColor("#fce8b2")    # żółty
 
-# Ikony tematu systemowego wg kategorii MIME
+# ---- Kolory ikon wg typu (Material Design) ----
+ICON_COLORS = {
+    "folder":  "#f9ab00",
+    "image":   "#1a73e8",
+    "video":   "#e8453c",
+    "audio":   "#f06292",
+    "text":    "#5f6368",
+    "pdf":     "#e8453c",
+    "zip":     "#5f6368",
+    "code":    "#1a73e8",
+    "default": "#5f6368",
+}
+
+# ---- Ikony systemowe wg MIME ----
 MIME_ICONS = {
     "image": "image-x-generic",
     "video": "video-x-generic",
     "audio": "audio-x-generic",
-    "text": "text-x-generic",
-    "pdf": "application-pdf",
-    "zip": "package-x-generic",
+    "text":  "text-x-generic",
+    "pdf":   "application-pdf",
+    "zip":   "package-x-generic",
 }
 
-# ---- Cache ikon MIME (LRU, max 500 wpisów) ----
+# ---- Cache ikon MIME (LRU) ----
 _mime_icon_cache: collections.OrderedDict[str, QIcon] = collections.OrderedDict()
 _MIME_CACHE_MAX = 500
 
 
 def _icon_for(info: FileInfo) -> QIcon:
+    """Zwróć ikonę typu pliku (z cache'em LRU)."""
     style_icons = QIcon.fromTheme
     if info.is_dir:
+        cache_key = "__folder__"
+        if cache_key in _mime_icon_cache:
+            _mime_icon_cache.move_to_end(cache_key)
+            return _mime_icon_cache[cache_key]
         icon = style_icons("folder")
-        return icon if not icon.isNull() else style_icons("folder-open")
+        if icon.isNull():
+            icon = style_icons("folder-open")
+        _mime_icon_cache[cache_key] = icon
+        if len(_mime_icon_cache) > _MIME_CACHE_MAX:
+            _mime_icon_cache.popitem(last=False)
+        return icon
+
     mime = info.mime or ""
-    # Sprawdź cache
-    cache_key = mime or info.name.rsplit(".", 1)[-1] if "." in info.name else ""
+    cache_key = mime
     if cache_key in _mime_icon_cache:
         _mime_icon_cache.move_to_end(cache_key)
         return _mime_icon_cache[cache_key]
+
     for key, theme_name in MIME_ICONS.items():
         if mime.startswith(key) or key in mime:
             icon = style_icons(theme_name)
@@ -57,6 +86,7 @@ def _icon_for(info: FileInfo) -> QIcon:
                 if len(_mime_icon_cache) > _MIME_CACHE_MAX:
                     _mime_icon_cache.popitem(last=False)
                 return icon
+
     icon = style_icons("text-x-generic")
     if icon.isNull():
         icon = style_icons("application-octet-stream")
@@ -64,6 +94,27 @@ def _icon_for(info: FileInfo) -> QIcon:
     if len(_mime_icon_cache) > _MIME_CACHE_MAX:
         _mime_icon_cache.popitem(last=False)
     return icon
+
+
+def _make_colored_folder_icon(color_hex: str, size: int = 40) -> QIcon:
+    """Stwórz ikonę folderu z kolorowym tłem (styl Material)."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    # Zaokrąglone tło
+    bg = QColor(color_hex)
+    painter.setBrush(bg)
+    painter.setPen(Qt.PenStyle.NoPen)
+    radius = size * 0.22
+    painter.drawRoundedRect(2, 2, size - 4, size - 4, radius, radius)
+    # Folder emoji
+    painter.setPen(QColor("#ffffff"))
+    font = QFont("Segoe UI Emoji", int(size * 0.38))
+    painter.setFont(font)
+    painter.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "📁")
+    painter.end()
+    return QIcon(pm)
 
 
 class FileListModel(QAbstractTableModel):
@@ -75,15 +126,12 @@ class FileListModel(QAbstractTableModel):
         self._provider: Optional[FileSystemProvider] = None
         self.show_hidden = False
         self._thumbs: collections.OrderedDict[str, QIcon] = collections.OrderedDict()
-        # Ścieżki w schowku (podświetlane) + tryb (False=kopiuj, True=wytnij)
         self._clipboard_paths: set[str] = set()
         self._clipboard_cut = False
-        # Podświetlenie wyników operacji (co/ile właśnie skopiowano do tego katalogu)
         self._flash_paths: set[str] = set()
         self._flash_cut = False
 
     def set_clipboard_highlight(self, paths: set[str], cut: bool) -> None:
-        """Oznacza graficznie pozycje znajdujące się w schowku."""
         self._clipboard_paths = paths
         self._clipboard_cut = cut
         if self._items:
@@ -93,7 +141,6 @@ class FileListModel(QAbstractTableModel):
                 [Qt.ItemDataRole.BackgroundRole])
 
     def set_transfer_highlight(self, paths: set[str], cut: bool) -> None:
-        """Podświetla pozycje, które właśnie tu skopiowano/przeniesiono."""
         self._flash_paths = set(paths)
         self._flash_cut = cut
         if self._items:
@@ -123,11 +170,12 @@ class FileListModel(QAbstractTableModel):
     def item_at(self, row: int) -> Optional[FileInfo]:
         return self._items[row] if 0 <= row < len(self._items) else None
 
-    # ----- przeciąganie (drag & drop) -----
+    # ----- drag & drop -----
     def mimeTypes(self) -> List[str]:
         return [FILE_MIME]
 
-    def mimeData(self, indexes) -> QMimeData:
+    def mimeData(self, indexes) -> 'QMimeData':
+        from PySide6.QtCore import QMimeData
         mime = QMimeData()
         paths: List[str] = []
         seen = set()
@@ -166,28 +214,45 @@ class FileListModel(QAbstractTableModel):
             if col == 0:
                 return info.name
             if col == 1:
-                return "—" if info.is_dir else human_size(info.size)
+                return "📁" if info.is_dir else human_size(info.size)
             if col == 2:
-                return info.modified.strftime("%Y-%m-%d %H:%M") if info.modified else ""
+                return info.modified.strftime("%d.%m.%Y %H:%M") if info.modified else ""
             if col == 3:
-                return "Katalog" if info.is_dir else info.mime.split("/")[-1]
+                return "Folder" if info.is_dir else (info.mime.split("/")[-1].upper() if info.mime else "")
 
         if role == Qt.ItemDataRole.DecorationRole and col == 0:
-            # Miniaturka dla lokalnych obrazów (LRU cache, max 300)
+            # Duże miniaturki (48px) dla obrazów lokalnych
             if (isinstance(self._provider, LocalFileSystem)
                     and info.mime.startswith("image/") and info.size < 50_000_000):
                 if info.path not in self._thumbs:
                     pm = QPixmap(info.path)
-                    self._thumbs[info.path] = QIcon(
-                        pm.scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio,
-                                  Qt.TransformationMode.SmoothTransformation)
-                        if not pm.isNull() else QPixmap(0, 0))
-                    if len(self._thumbs) > self._THUMB_CACHE_MAX:
-                        self._thumbs.popitem(last=False)
+                    if not pm.isNull():
+                        scaled = pm.scaled(48, 48,
+                                           Qt.AspectRatioMode.KeepAspectRatio,
+                                           Qt.TransformationMode.SmoothTransformation)
+                        self._thumbs[info.path] = QIcon(scaled)
+                    else:
+                        self._thumbs[info.path] = QIcon()
                 self._thumbs.move_to_end(info.path)
+                if len(self._thumbs) > self._THUMB_CACHE_MAX:
+                    self._thumbs.popitem(last=False)
                 if not self._thumbs[info.path].isNull():
                     return self._thumbs[info.path]
             return _icon_for(info)
+
+        if role == Qt.ItemDataRole.FontRole and col == 0:
+            f = QFont()
+            if info.is_dir:
+                f.setBold(True)
+                f.setPointSize(12)
+            else:
+                f.setPointSize(11)
+            return f
+
+        if role == Qt.ItemDataRole.ForegroundRole:
+            if info.is_dir:
+                return QColor(ICON_COLORS["folder"])
+            return None
 
         if role == Qt.ItemDataRole.BackgroundRole:
             if info.path in self._clipboard_paths:
@@ -224,9 +289,9 @@ class FileListModel(QAbstractTableModel):
 
 
 class FileListView(QTableView):
-    _ZOOM_MIN = 16
-    _ZOOM_MAX = 64
-    _ZOOM_STEP = 2
+    _ZOOM_MIN = 20
+    _ZOOM_MAX = 80
+    _ZOOM_STEP = 4
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -235,24 +300,25 @@ class FileListView(QTableView):
         self.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.setShowGrid(False)
         self.verticalHeader().setVisible(False)
-        self.verticalHeader().setDefaultSectionSize(28)
-        self._icon_size = 22
+        self._icon_size = 36
+        self._row_height = 56
+        self.verticalHeader().setDefaultSectionSize(self._row_height)
         self.setIconSize(QSize(self._icon_size, self._icon_size))
         self.setSortingEnabled(True)
-        self.setAlternatingRowColors(True)
+        self.setAlternatingRowColors(False)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDragDropMode(QTableView.DragDropMode.DragDrop)
         self.doubleClicked.connect(self._on_double)
+        self.setFrameShape(QTableView.Shape.NoFrame)
 
         header = self.horizontalHeader()
-        # Kolumna "Nazwa" zajmuje całą wolną przestrzeń — długie nazwy
-        # nie są ucinane; pozostałe kolumny dopasowują się do treści.
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, header.ResizeMode.Stretch)
         for col in (1, 2, 3):
             header.setSectionResizeMode(col, header.ResizeMode.ResizeToContents)
-        header.setMinimumSectionSize(70)
+        header.setMinimumSectionSize(80)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         self._double_handler = None
         self._drop_handler = None
@@ -261,7 +327,6 @@ class FileListView(QTableView):
         self._double_handler = handler
 
     def set_drop_handler(self, handler) -> None:
-        """handler(paths: List[str], target_dir: Optional[str]) — kopiuje/przenosi."""
         self._drop_handler = handler
 
     def _on_double(self, index: QModelIndex) -> None:
@@ -281,7 +346,6 @@ class FileListView(QTableView):
             return []
 
     def _drop_target_dir(self, pos) -> Optional[str]:
-        """Upuszczenie na wiersz katalogu = kopiowanie DO tego katalogu."""
         idx = self.indexAt(pos)
         if idx.isValid():
             info = idx.data(Qt.ItemDataRole.UserRole)
@@ -309,16 +373,18 @@ class FileListView(QTableView):
         self._drop_handler(paths, self._drop_target_dir(event.position().toPoint()))
         event.acceptProposedAction()
 
-    # ----- Ctrl+Scroll zoom ikon -----
+    # ----- Ctrl+Scroll zoom -----
     def wheelEvent(self, event) -> None:
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
             if delta > 0:
                 self._icon_size = min(self._ZOOM_MAX, self._icon_size + self._ZOOM_STEP)
+                self._row_height = min(96, self._row_height + 8)
             elif delta < 0:
                 self._icon_size = max(self._ZOOM_MIN, self._icon_size - self._ZOOM_STEP)
+                self._row_height = max(36, self._row_height - 8)
             self.setIconSize(QSize(self._icon_size, self._icon_size))
-            self.verticalHeader().setDefaultSectionSize(self._icon_size + 6)
+            self.verticalHeader().setDefaultSectionSize(self._row_height)
             self.viewport().update()
             event.accept()
         else:
@@ -330,6 +396,4 @@ class FileListView(QTableView):
         return [model.item_at(r) for r in sorted(rows) if model.item_at(r)]
 
     def refresh_column_sizes(self) -> None:
-        # Kolumny 1-3 mają ResizeToContents — nic do robienia.
-        # Metoda zostaje jako stabilny punkt API dla main_window.
         pass

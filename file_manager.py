@@ -71,9 +71,8 @@ def main() -> int:
 
     set_language(str(QSettings("FileManager", "FileManager").value("language", "pl")))
 
-    font = QFont()
-    font.setPointSize(14)
-    font.setBold(True)
+    font = QFont("Segoe UI", 13)
+    font.setWeight(QFont.Weight.Medium)
     app.setFont(font)
 
     if os.path.exists(_ICON):
