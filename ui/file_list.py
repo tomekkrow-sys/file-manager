@@ -240,6 +240,21 @@ class FileListModel(QAbstractTableModel):
                     return self._thumbs[info.path]
             return _icon_for(info)
 
+        if role == Qt.ItemDataRole.ToolTipRole:
+            if info.is_dir:
+                return f"📁 {info.name}"
+            size = human_size(info.size) if info.size else ""
+            mime = info.mime or ""
+            date = info.modified.strftime("%d.%m.%Y %H:%M") if info.modified else ""
+            parts = [info.name]
+            if size:
+                parts.append(size)
+            if mime:
+                parts.append(mime)
+            if date:
+                parts.append(date)
+            return "  |  ".join(parts)
+
         if role == Qt.ItemDataRole.FontRole and col == 0:
             f = QFont()
             if info.is_dir:
