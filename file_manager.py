@@ -13,8 +13,8 @@ import os
 import subprocess
 import sys
 
-from PySide6.QtCore import QSettings
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QFont, QIcon, QKeySequence
 from PySide6.QtWidgets import QApplication
 
 from core.i18n import set_language
@@ -32,9 +32,12 @@ logging.basicConfig(
 
 VERSION = "0.1.0"
 
+# Globalne skalowanie UI
+_BASE_FONT_SIZE = 13
+_zoom_level = 0  # offset od bazowej (0 = normal, +1 = więszy, -1 = mniejszy)
+
 
 def _resolve_version() -> str:
-    # 1) jawny plik wersji (bundlowany przez set_version.py / instalator)
     for cand in (os.path.join(os.getcwd(), "version.txt"),
                  os.path.join(os.getcwd(), "_internal", "version.txt")):
         try:
@@ -45,7 +48,6 @@ def _resolve_version() -> str:
                         return v
         except Exception:
             pass
-    # 2) git tag (czysty checkout ze źródeł)
     try:
         out = subprocess.run(
             ["git", "describe", "--tags", "--exact-match"],
@@ -63,6 +65,20 @@ def _resolve_version() -> str:
 VERSION = _resolve_version()
 
 
+def _apply_zoom(app: QApplication) -> None:
+    """Zastosuj bieżący poziom zoom do fonta i stylu."""
+    size = _BASE_FONT_SIZE + _zoom_level
+    size = max(8, min(24, size))  # clamp 8–24
+    font = QFont("Segoe UI", size)
+    font.setWeight(QFont.Weight.Medium)
+    app.setFont(font)
+    # Przeładuj styl z nowym fontem
+    saved = str(QSettings("FileManager", "FileManager").value("ui/theme", "dark"))
+    ThemeManager.apply_theme(app, saved, font_size=size)
+    # Zapisz zoom
+    QSettings("FileManager", "FileManager").setValue("ui/zoom", _zoom_level)
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("File Manager")
@@ -71,18 +87,14 @@ def main() -> int:
 
     set_language(str(QSettings("FileManager", "FileManager").value("language", "pl")))
 
-    font = QFont("Segoe UI", 13)
-    font.setWeight(QFont.Weight.Medium)
-    app.setFont(font)
+    # Wczytaj zapisany zoom
+    global _zoom_level
+    _zoom_level = int(QSettings("FileManager", "FileManager").value("ui/zoom", 0))
+
+    _apply_zoom(app)
 
     if os.path.exists(_ICON):
         app.setWindowIcon(QIcon(_ICON))
-
-    ThemeManager.apply_theme(app, "dark")
-
-    saved_theme = str(QSettings("FileManager", "FileManager").value("ui/theme", "dark"))
-    if saved_theme and saved_theme in ThemeManager.themes:
-        ThemeManager.apply_theme(app, saved_theme)
 
     mode = str(QSettings("FileManager", "FileManager").value("ui/mode", "single"))
     if mode == "dual":
@@ -97,6 +109,33 @@ def main() -> int:
     else:
         window = MainWindow()
     window.setWindowTitle(f"File Manager v{VERSION}")
+
+    # Globalne skróty Ctrl+/Ctrl-/Ctrl+0
+    def zoom_in():
+        global _zoom_level
+        _zoom_level = min(11, _zoom_level + 1)
+        _apply_zoom(app)
+
+    def zoom_out():
+        global _zoom_level
+        _zoom_level = max(-5, _zoom_level - 1)
+        _apply_zoom(app)
+
+    def zoom_reset():
+        global _zoom_level
+        _zoom_level = 0
+        _apply_zoom(app)
+
+    from PySide6.QtGui import QShortcut
+    sc_in = QShortcut(QKeySequence("Ctrl+="), window)
+    sc_in.activated.connect(zoom_in)
+    sc_in2 = QShortcut(QKeySequence("Ctrl++"), window)
+    sc_in2.activated.connect(zoom_in)
+    sc_out = QShortcut(QKeySequence("Ctrl+-"), window)
+    sc_out.activated.connect(zoom_out)
+    sc_reset = QShortcut(QKeySequence("Ctrl+0"), window)
+    sc_reset.activated.connect(zoom_reset)
+
     window.show()
     return app.exec()
 

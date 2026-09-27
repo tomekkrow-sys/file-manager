@@ -99,26 +99,30 @@ class ThemeManager:
     }
 
     @classmethod
-    def apply_theme(cls, app, theme_name: str = "dark") -> None:
+    def apply_theme(cls, app, theme_name: str = "dark", font_size: int = 14) -> None:
         """Zastosuj motyw do aplikacji."""
         colors = cls.themes.get(theme_name, cls.themes["dark"])
-        style = cls._generate_style(colors)
+        style = cls._generate_style(colors, font_size=font_size)
         app.setStyleSheet(style)
 
     @classmethod
-    def _generate_style(cls, c: dict) -> str:
+    def _generate_style(cls, c: dict, font_size: int = 14) -> str:
         """Wygeneruj CSS w stylu Material Design 3."""
+        fs = font_size
+        fs_sm = max(10, fs - 2)
+        fs_lg = fs + 2
+        fs_xl = fs + 3
         return f"""
         /* ====== OKNA ====== */
         QMainWindow, QDialog {{
             background-color: {c["bg"]};
             color: {c["text"]};
             font-family: "Segoe UI", "Noto Sans", "Ubuntu", sans-serif;
-            font-size: 14px;
+            font-size: {fs}px;
         }}
         QWidget {{
             font-family: "Segoe UI", "Noto Sans", "Ubuntu", sans-serif;
-            font-size: 14px;
+            font-size: {fs}px;
         }}
 
         /* ====== MENU BAR ====== */
@@ -134,6 +138,7 @@ class ThemeManager:
             border-radius: 8px;
             color: {c["text"]};
             font-weight: 500;
+            font-size: {fs}px;
         }}
         QMenuBar::item:selected {{
             background-color: {c["hover_bg"]};
@@ -146,11 +151,13 @@ class ThemeManager:
             padding: 6px;
             border: 1px solid {c["border"]};
             border-radius: 12px;
+            font-size: {fs}px;
         }}
         QMenu::item {{
             padding: 10px 32px 10px 16px;
             border-radius: 8px;
             font-weight: 400;
+            font-size: {fs}px;
         }}
         QMenu::item:selected {{
             background-color: {c["hover_bg"]};
@@ -174,7 +181,7 @@ class ThemeManager:
             border: none;
             padding: 10px 16px;
             border-radius: 10px;
-            font-size: 14px;
+            font-size: {fs}px;
             font-weight: 500;
         }}
         QToolBar QToolButton:hover {{
@@ -191,7 +198,7 @@ class ThemeManager:
             border: none;
             padding: 10px 24px;
             border-radius: 10px;
-            font-size: 14px;
+            font-size: {fs}px;
             font-weight: 600;
             min-height: 20px;
         }}
@@ -210,7 +217,7 @@ class ThemeManager:
             border-radius: 12px;
             padding: 4px;
             outline: 0;
-            font-size: 14px;
+            font-size: {fs}px;
             gridline-color: transparent;
         }}
         QTableView::item {{
@@ -232,13 +239,14 @@ class ThemeManager:
             color: {c["text"]};
             border: none;
             outline: 0;
-            font-size: 14px;
+            font-size: {fs}px;
         }}
         QListView::item, QListWidget::item {{
             padding: 12px 16px;
             border-radius: 10px;
             min-height: 40px;
             margin: 2px 4px;
+            font-size: {fs}px;
         }}
         QListView::item:selected, QListWidget::item:selected {{
             background-color: {c["selected_bg"]};
@@ -251,12 +259,12 @@ class ThemeManager:
         /* ====== SIDEBAR ====== */
         QListWidget {{
             background-color: {c["sidebar_bg"]};
-            font-size: 13px;
+            font-size: {fs}px;
         }}
 
         /* ====== PASEK ŚCIEŻKI ====== */
         QLabel {{
-            font-size: 15px;
+            font-size: {fs_lg}px;
             font-weight: 600;
             color: {c["text"]};
         }}
@@ -267,7 +275,7 @@ class ThemeManager:
             color: {c["text_secondary"]};
             border-top: 1px solid {c["border"]};
             padding: 6px 16px;
-            font-size: 13px;
+            font-size: {fs_sm}px;
             font-weight: 400;
         }}
 
@@ -278,7 +286,7 @@ class ThemeManager:
             border: 2px solid {c["border"]};
             padding: 10px 14px;
             border-radius: 10px;
-            font-size: 14px;
+            font-size: {fs}px;
             selection-background-color: {c["accent"]};
         }}
         QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTextEdit:focus {{
@@ -291,6 +299,7 @@ class ThemeManager:
             border: 1px solid {c["border"]};
             border-radius: 10px;
             padding: 4px;
+            font-size: {fs}px;
         }}
 
         /* ====== SCROLLBAR — Material style ====== */
@@ -344,7 +353,7 @@ class ThemeManager:
             border-bottom: 2px solid {c["border"]};
             border-right: 1px solid {c["border"]};
             padding: 10px 14px;
-            font-size: 12px;
+            font-size: {fs_sm}px;
             font-weight: 600;
             text-transform: uppercase;
         }}
@@ -356,7 +365,7 @@ class ThemeManager:
             border: 1px solid {c["border"]};
             border-radius: 8px;
             padding: 8px 12px;
-            font-size: 13px;
+            font-size: {fs_sm}px;
         }}
 
         /* ====== PROGRESS BAR ====== */
