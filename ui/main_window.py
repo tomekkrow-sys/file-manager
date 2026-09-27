@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import QProcess, QSettings, QSize, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
     QListWidgetItem, QMainWindow, QMenu, QMessageBox, QProgressDialog,
