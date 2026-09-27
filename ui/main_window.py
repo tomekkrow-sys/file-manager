@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import QProcess, QSettings, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QProcess, QSettings, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
@@ -155,14 +155,29 @@ class MainWindow(QMainWindow):
         self.ftp_server = LocalFtpServer()
 
         # ----- sidebar źródeł -----
-        self.places = _PlacesList(maximumWidth=240)
+        self.places = _PlacesList(maximumWidth=280)
+        self.places.setIconSize(QSize(28, 28))
         self.places.setStyleSheet(
-            "QListWidget { background-color: #16162b; border: none;"
-            "padding: 8px; font-size: 13px; }"
-            "QListWidget::item { padding: 10px 12px; border-radius: 8px;"
-            "margin: 2px 4px; min-height: 36px; }"
-            "QListWidget::item:selected { background-color: #1a3a5c; }"
-            "QListWidget::item:hover { background-color: #2d2d50; }")
+            "QListWidget {"
+            "  background-color: #16162b; border: none;"
+            "  padding: 8px; font-size: 15px; font-weight: 500;"
+            "}"
+            "QListWidget::item {"
+            "  padding: 12px 14px; border-radius: 10px;"
+            "  margin: 3px 4px; min-height: 44px;"
+            "}"
+            "QListWidget::item:selected {"
+            "  background-color: #1a3a5c;"
+            "  color: #8ab4f8;"
+            "}"
+            "QListWidget::item:hover {"
+            "  background-color: #2d2d50;"
+            "}"
+            "QListWidget::item:disabled {"
+            "  color: #5f5fa0; font-weight: 400; font-size: 12px;"
+            "  padding: 6px 14px; min-height: 20px;"
+            "}"
+        )
         self.places.currentRowChanged.connect(self._on_place_changed)
         self.places.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.places.customContextMenuRequested.connect(self._places_context_menu)
@@ -225,23 +240,23 @@ class MainWindow(QMainWindow):
             self.places.addItem(_(label))
             self._places_map.append((label, None))
 
-        add("🖥  Pamięć lokalna", lambda: LocalFileSystem())
-        add("📁  Katalog domowy", "home")
-        add("📊  Analiza pamięci", "analyze")
-        add("🎵  Zbiory mediów", "collections")
-        sep("── Sieć ──")
-        add("➕  Połącz FTP…", "ftp")
-        add("➕  Połącz SSH (SFTP)…", "sftp")
-        add("➕  Połącz NAS (SMB)…", "smb")
-        add("📡  Udostępnij przez FTP…", "ftp_server")
+        add("  💻  Pamięć lokalna", lambda: LocalFileSystem())
+        add("  🏠  Katalog domowy", "home")
+        add("  📊  Analiza pamięci", "analyze")
+        add("  🎵  Zbiory mediów", "collections")
+        sep("─────── Sieć ───────")
+        add("  📶  Połącz FTP…", "ftp")
+        add("  🔑  Połącz SSH (SFTP)…", "sftp")
+        add("  🗄  Połącz NAS (SMB)…", "smb")
+        add("  📡  Udostępnij przez FTP…", "ftp_server")
 
         # Zapisane połączenia — jedno kliknięcie i wybór z pamięci
         saved = get_all_connections()
         if saved:
-            sep("── Zapisane połączenia ──")
+            sep("─────── Zapisane ───────")
             for kind, params in saved:
                 icon = {"ftp": "🔌", "sftp": "🔑", "smb": "🗄"}.get(kind, "🔌")
-                add(_("{icon}  {name}").format(
+                add(_("  {icon}  {name}").format(
                     icon=icon, name=params.get('name', params['host'])),
                     ("saved", kind, params))
 
